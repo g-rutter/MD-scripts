@@ -1,0 +1,28 @@
+#!/bin/bash
+#PBS -l nodes=1:ppn=1,pvmem=2000mb,walltime=72:00:00
+#PBS -j oe
+#PBS -V
+
+number_regex='^[0-9]+$'
+if ! [[ ${PBS_ARRAYID} =~ $number_regex ]]; then
+   echo "Error: This isn't an array"
+   exit 1
+fi
+
+cd $PBS_O_WORKDIR
+
+#Run as: ~/scripts/post_process_md/REMD_dcd_unshuffler.py [filestring] [F] [N] [T] {B}
+#[filestring] If the files are called traj_0.dcd .. traj_N.dcd, filestring is 'traj_'.
+#[F] First dump step.
+#[N] Frequency of dump steps.
+#[T] Which temperature to demultiplex
+#{B} Which DCD frame to start with. Typically set this to 1 more than the number of frames so far.  = 1 by default.
+   #Run in a directory containing the files to be unshuffled and the log.lammps corresponding to them.
+
+~/scripts/post_process_md/REMD_dcd_unshuffler.py '' 0 1000 ${PBS_ARRAYID}
+rename '-1' '' *.dcd
+
+module unload vmd-1.9.1
+module load vmd-1.8.6
+
+vmd T${PBS_ARRAYID}.dcd -psf ../*.psf -dispdev text -e ~/scripts/post_process_md/unwrap_script.tcl; mv traj_unwrapped.dcd T${PBS_ARRAYID}-unwrap.dcd
