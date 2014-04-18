@@ -1,0 +1,236 @@
+# vim: set filetype=sh:
+#TODO Make it concatenate output? -> replace thermo with dump which can append.
+#TODO verify results are good and potential/totE doesn't jump about between runs or jobs.
+#TODO is DCD data getting written out twice at start and end of each run?
+
+#!/bin/bash
+#PBS -l nodes=16:ppn=1,pvmem=1000mb,walltime=48:00:00
+#PBS -j oe
+#PBS -V
+
+###########
+#  Setup  #
+###########
+
+cd $PBS_O_WORKDIR
+echo "Start time of job $JOB: `date`"
+
+args=($@)
+JOB=${args[0]}
+RUN=${args[1]}
+SUMMARY_FILE=${args[2]}
+readonly PBS_JOBNUM=`echo $PBS_JOBID | sed 's/\..*//'`
+
+if [[ $JOB -eq 0 ]]; then JOB=0; fi
+if [[ $RUN -eq 0 ]]; then RUN=0; fi
+if [[ $SUMMARY_FILE = '' ]]; then SUMMARY_FILE="summary.${PBS_JOBNUM}"; fi
+
+end_time=$((`date +%s`+$PBS_WALLTIME))
+this_script="${PBS_O_WORKDIR}/${PBS_JOBNAME}"
+
+##############
+#  Settings  #
+##############
+
+#max overall runs (executions of $program) and jobs (submissions of this script)
+readonly MAX_RUNS=100
+readonly MAX_JOBS=25
+
+readonly enable_job_restart=true
+
+readonly steps_per_run=30000000
+
+####################
+#  Debug settings  #
+####################
+
+readonly debug=false
+
+if $debug; then
+   readonly program="echo"
+   readonly pause="5"
+   readonly buffer=5
+else
+   readonly program="mpirun lmp_minerva"
+   readonly pause="0"
+   readonly buffer=600
+fi
+
+###############
+#  Functions  #
+###############
+
+remaining_time(){ now_date_s=`date +%s`; echo $(($end_time-$now_date_s)); }
+get_allowance() {
+   ar=($@); max=0
+   for i in ${ar[@]}; do [ $i -gt $max ] && max=$i; done
+   echo "$(($max+$buffer))"
+}
+run_program() {
+   echo ""
+   job_start_date_T=`date +%T`
+   echo "Start time of run $RUN: `date`"
+
+   #########
+   #  Pre  #
+   #########
+
+   #Make new subdir
+   mkdir -p "logs/$RUN" traj/tmp "restart/$RUN"
+
+   #Set up command-line options
+   input_script="inputs/${RUN}.in"
+   log_file="logs/${RUN}/log.lammps"
+   screen_file="logs/${RUN}/screen"
+   partition="${PBS_NP}x1"
+   trajdir="traj/$RUN"
+
+   prev_runs=$(($RUN-1))
+   make_input
+
+   ##################
+   #  Main command  #
+   ##################
+
+   ARGS="-in $input_script -p $partition -log $log_file -screen $screen_file -var STEPS $steps_per_run -var RUN $RUN"
+   echo "Command: $program $ARGS"
+   $program $ARGS
+   sleep ${pause}s
+
+   #Kill if there's an error in running the program
+   if (( $? )); then
+      echo "Exiting job and not restarting because $program exited with error."
+      exit
+   fi
+
+   ##########
+   #  Post  #
+   ##########
+
+   if [[ $RUN -eq 1 ]]; then
+      for i in `seq 0 $((${PBS_NP}-1))`; do
+         mv traj/tmp/${i}.dcd traj/${i}.dcd&
+      done
+   elif [[ $RUN -ge 2 ]]; then
+      rename .dcd -old.dcd traj/[0-9]*.dcd
+      for i in `seq 0 $((${PBS_NP}-1))`; do
+         catdcd -o traj/${i}.dcd traj/${i}-old.dcd traj/tmp/${i}.dcd >/dev/null &
+      done
+   fi
+
+   wait
+   rm -rf traj/*-old.dcd traj/tmp
+
+   echo "End time of run $RUN: `date`"
+   echo ""
+}
+make_input() {
+   #Make an input file for next time.
+   if [[ $RUN -le 1 ]]; then
+      timestep=0
+      echo "No need to make an input script for this run (RUN=$RUN)"
+      return
+   fi
+
+   echo "Making an input script for this run (RUN=$RUN)"
+
+   #Get correct world variable as string
+   timestep=$(($prev_runs*$steps_per_run))
+   worldvar=(`tail -1 logs/${prev_runs}/log.lammps`)
+   log_timestep=${worldvar[0]}
+
+   #sanity check
+   if ! [[ $log_timestep -eq $timestep ]]; then
+      echo "WARNING: Timestep is wacky! (Logged timestep=$log_timestep, prev_runs*steps_per_run=$timestep"
+   else
+      echo "(Start timestep=$timestep)"
+   fi
+
+   swaps=${worldvar[*]:1}
+   sed "s/\(variable w world \).*/\1$swaps/" inputs/1.in >inputs/${RUN}.in
+}
+write_summary() {
+   printf "%4d |%4d |%8s |%12d |%11s |%12s\n" $RUN $JOB $PBS_JOBNUM $timestep ${job_start_date_T} ${lap_times[$RUN]} >>$SUMMARY_FILE
+}
+
+#################
+#  Initial run  #
+#################
+
+if [[ $RUN -eq 0 ]]; then
+   start_date_s=`date +%s`
+
+   run_program
+
+   lap_times[$RUN]=$((`date +%s`-$start_date_s))
+
+   if ! [[ -f $SUMMARY_FILE ]]; then
+      printf "MAX_RUNS: %d\nMAX_JOBS: %d\nenable_job_restart: %s\n" $MAX_RUNS $MAX_JOBS $enable_job_restart >$SUMMARY_FILE
+      printf "PROGRAM: %s\n\n" "$program" >>$SUMMARY_FILE
+      echo   " RUN | JOB | JOBID   | START TSTEP | START TIME | ELAPSED (s)" >>$SUMMARY_FILE
+   fi
+
+   write_summary
+
+   allowance=`get_allowance ${lap_times[*]}`
+   RUN=1
+else
+   allowance=`get_allowance 0`
+fi
+
+##################
+#  Restart runs  #
+##################
+
+for (( ; ; RUN++ )); do
+
+   #Break if RUN reaches MAX_RUNS
+   if [[ $RUN -ge $MAX_RUNS ]]; then
+      exit_reason="Max runs reached. RUN=$RUN, MAX=$MAX_RUNS"
+      break
+   fi
+
+   #Resubmit and break
+   if ! [[ "$allowance" -le `remaining_time` ]]; then
+
+      if $enable_job_restart; then
+
+         if [[ $(($JOB+1)) -lt "$MAX_JOBS" ]]; then
+
+            echo "Submitting new job with set -x."
+            set -x
+            newjob=$(qsub -q $PBS_O_QUEUE -F "\"$(($JOB+1)) $RUN $SUMMARY_FILE\"" $this_script)
+            set +x
+
+         else
+            exit_reason="Max jobs reached. JOB=$JOB, MAX=$MAX_JOBS"
+         fi
+
+      else
+         exit_reason="Job restarting is disabled in "'$enable_job_restart'
+      fi
+      break
+
+   fi
+
+   #Otherwise proceeed
+   start_date_s=`date +%s`
+
+   run_program
+
+   lap_times[$RUN]=$((`date +%s`-$start_date_s))
+   write_summary
+
+   allowance=`get_allowance ${lap_times[*]}`
+
+done
+
+if !  [[ $exit_reason = '' ]]; then
+   echo "Exit reason: "$exit_reason
+
+   echo ""                          >>$SUMMARY_FILE
+   echo "Exit reason: "$exit_reason >>$SUMMARY_FILE
+   echo "End time: `date`"          >>$SUMMARY_FILE
+fi
+
+echo "End time of job: `date`"
