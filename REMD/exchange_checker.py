@@ -1,15 +1,12 @@
 #!/usr/bin/env python
 #encoding: utf-8
 
-import collections
 import bisect
-import sys
 from argparse import ArgumentParser
 
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import numpy as np
-from sys import argv
 
 swaps = []
 swap_steps = []
@@ -17,6 +14,12 @@ swap_steps = []
 ###############
 #  Functions  #
 ###############
+
+def file_n_lines(fname):
+   with open(fname) as f:
+      for i, l in enumerate(f):
+         pass
+   return i + 1
 
 def get_temp ( swaps, swap_steps, step ):
    'Get temperature index of replica'
@@ -54,18 +57,27 @@ out_xmgra = open(out_xmgra_str, "w")
 #  Read in RE swaps  #
 ######################
 
-for line in inputfile:
+print "Reading in RE swaps"
 
+n_steps = file_n_lines(inputfile_str)-3
+
+for i_line, line in enumerate(inputfile):
+
+   i_step = i_line - 3
    line_list = line.split(' ')
+
    try:
       assert line[0].isdigit()
 
-      swap_steps.append( int(line_list[0]) )
-      swaps.append( [ int(item) for item in line_list[1:] ] )
+      swap_steps[i_step] = int(line_list[0])
+      swaps[i_step][:]   = line_list[1:]
 
    except AssertionError:
       if line_list[:2] == ['Running', 'on']:
          n_replicas = int(line_list[2])
+
+         swaps      = np.empty([n_steps,n_replicas], dtype = int)
+         swap_steps = np.empty([n_steps],            dtype = int)
 
 inputfile.close()
 
@@ -73,11 +85,12 @@ inputfile.close()
 #  Unshuffle  #
 ###############
 
-replicas_temps = [ [] for i in range(n_replicas) ]
+print "Unshuffling"
 
-for swap in swaps:
-   for i in range(n_replicas):
-      replicas_temps[i].append(swap.index(i))
+#replicas_temps[i][j] temperature index of replica i at step j
+replicas_temps = np.empty( [ n_replicas, n_steps ] )
+for temp_i in range(n_replicas):
+   replicas_temps[temp_i] = np.nonzero(swaps == temp_i)[1]
 
 ##############
 #  Graph it  #
@@ -93,46 +106,52 @@ for swap in swaps:
 #  Average trip time  #
 #######################
 
+print "Calculating average trip time."
 
 fulltrips = roundtrips = 0
 
-for replica_temp in replicas_temps:
+for replica_temps in replicas_temps:
 
-   all_temps = [ i for i in range (1, n_replicas) ]
-   extreme_temps = [ 0, n_replicas-1 ]
+   false_ar        = np.zeros([n_replicas], dtype = bool)
+   all_temps_tally = false_ar.copy()
+   maxtemp         = False
 
-   for temp in replica_temp:
+   for temp in replica_temps:
 
-      if all_temps == []:
-         if temp == 0:
-            all_temps = [ i for i in range (1, n_replicas) ]
-            fulltrips += 1
+      if temp == 0:
+         if all_temps_tally.sum() == n_replicas:
+            all_temps_tally = false_ar.copy()
+            fulltrips +=1
 
-      try:
-         all_temps.remove(temp)
-      except ValueError:
-         pass
+         if maxtemp:
+            roundtrips += 1
+            maxtemp = False
 
-      if extreme_temps == []:
-         extreme_temps = [ 0, n_replicas-1 ]
-         roundtrips += 1
+      all_temps_tally[temp] = True
 
-      if temp == extreme_temps[0]:
-         extreme_temps.remove(temp)
+      if temp+1 == n_replicas:
+         maxtemp = True
 
 ##############################
 #  Histogram and trip times  #
 ##############################
 
-maxleni = maxlencount = maxcount = 0
-counts = [ [] for i in range(n_replicas) ]
+print "Histogramming"
 
+counts = np.empty([n_replicas,n_replicas], dtype=int)
+
+#histogram (main product: counts arary)
 for i, replica_temp in enumerate(replicas_temps):
-   maxleni = max(len(str(i)), maxleni)
    for temp in range(n_replicas):
-      counts[i].append(replica_temp.count(temp))
-      maxlencount = max(len(str(counts[i][-1])), maxlencount)
-      maxcount = max(counts[i][-1], maxcount)
+      counts[i][temp] = np.nonzero(replica_temp==temp)[0].shape[0]
+
+#stdev of counts at each temperature
+stddevs = counts.std(axis=1)
+
+#Maxes for graphing
+maxcount    = max(stddevs.max(), counts.max())
+maxlencount = len(str(maxcount))
+maxleni     = len(str(n_replicas-1))
 
 try:
    full_trip_time = float(swap_steps[-1])/(float(fulltrips)/n_replicas)
@@ -171,6 +190,12 @@ for i, replica_temp in enumerate(replicas_temps):
       pass
    print >>out_stats, ""
 
+print >>out_stats, ""
+print >>out_stats, '{0:{len}}'.format("STD Dev:", len=maxleni+9),
+for temp in range(n_replicas):
+   print >>out_stats, '{0:{len}}'.format(int(np.round(stddevs[temp])), len=maxlencount),
+print >>out_stats, ""
+
 out_stats.close()
 
 ############################
@@ -187,10 +212,11 @@ print >>out_xmgra, "@    title \"Visit count to temperatures by replicas\""
 print >>out_xmgra, "@    subtitle \"Each line is one of the", n_replicas, "replicas\""
 print >>out_xmgra, "@    xaxis  label \"Temperature index\""
 print >>out_xmgra, "@    yaxis  label \"Visits\""
-print >>out_xmgra, "@    xaxis  tick major" , str(roundup(maxcount/10,1))
-print >>out_xmgra, "@    yaxis  tick minor ticks 1"
-print >>out_xmgra, "@    xaxis  tick major 10"
-print >>out_xmgra, "@    xaxis  tick minor ticks 1"
+#print >>out_xmgra, "@    xaxis  tick major" , str(roundup(maxcount/10,1))
+#print >>out_xmgra, "@    yaxis  tick minor ticks 1"
+print >>out_xmgra, "@    xaxis  tick major 1"
+print >>out_xmgra, "@    xaxis  tick minor ticks 0"
+print >>out_xmgra, "@    xaxis  tick major size 1.000000"
 
 for i in range(n_replicas):
    print >>out_xmgra, "@target G0.S"+str(i)
