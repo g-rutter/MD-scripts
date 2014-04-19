@@ -51,15 +51,13 @@ inputfile = open(inputfile_str, "r")
 out_stats = open(out_stats_str, "w")
 out_xmgra = open(out_xmgra_str, "w")
 
-#graph = args.graph
-
 ######################
 #  Read in RE swaps  #
 ######################
 
 print "Reading in RE swaps"
 
-n_steps = file_n_lines(inputfile_str)-3
+n_swaps = file_n_lines(inputfile_str)-3
 
 for i_line, line in enumerate(inputfile):
 
@@ -76,8 +74,8 @@ for i_line, line in enumerate(inputfile):
       if line_list[:2] == ['Running', 'on']:
          n_replicas = int(line_list[2])
 
-         swaps      = np.empty([n_steps,n_replicas], dtype = int)
-         swap_steps = np.empty([n_steps],            dtype = int)
+         swaps      = np.empty([n_swaps,n_replicas], dtype = int)
+         swap_steps = np.empty([n_swaps],            dtype = int)
 
 inputfile.close()
 
@@ -88,7 +86,7 @@ inputfile.close()
 print "Unshuffling"
 
 #replicas_temps[i][j] temperature index of replica i at step j
-replicas_temps = np.empty( [ n_replicas, n_steps ] )
+replicas_temps = np.empty( [ n_replicas, n_swaps ] )
 for temp_i in range(n_replicas):
    replicas_temps[temp_i] = np.nonzero(swaps == temp_i)[1]
 
@@ -146,7 +144,7 @@ for i, replica_temp in enumerate(replicas_temps):
       counts[i][temp] = np.nonzero(replica_temp==temp)[0].shape[0]
 
 #stdev of counts at each temperature
-stddevs = counts.std(axis=1)
+stddevs = counts.std(axis = 1)
 
 #Maxes for graphing
 maxcount    = max(stddevs.max(), counts.max())
@@ -191,7 +189,7 @@ for i, replica_temp in enumerate(replicas_temps):
    print >>out_stats, ""
 
 print >>out_stats, ""
-print >>out_stats, '{0:{len}}'.format("STD Dev:", len=maxleni+9),
+print >>out_stats, '{0:{len}}'.format("STD:", len=maxleni+9),
 for temp in range(n_replicas):
    print >>out_stats, '{0:{len}}'.format(int(np.round(stddevs[temp])), len=maxlencount),
 print >>out_stats, ""
