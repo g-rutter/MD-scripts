@@ -145,6 +145,7 @@ for i, replica_temp in enumerate(replicas_temps):
 
 #stdev of counts at each temperature
 stddevs = counts.std(axis = 1)
+normed_stddevs = stddevs/n_swaps
 
 #Maxes for graphing
 maxcount    = max(stddevs.max(), counts.max())
@@ -189,9 +190,16 @@ for i, replica_temp in enumerate(replicas_temps):
    print >>out_stats, ""
 
 print >>out_stats, ""
+
+#STD
 print >>out_stats, '{0:{len}}'.format("STD:", len=maxleni+9),
 for temp in range(n_replicas):
    print >>out_stats, '{0:{len}}'.format(int(np.round(stddevs[temp])), len=maxlencount),
+print >>out_stats, ""
+#Normed STD
+print >>out_stats, '{0:{len}}'.format("Normed STD:", len=maxleni+9),
+for temp in range(n_replicas):
+   print >>out_stats, '{0:{len}}'.format(normed_stddevs[temp], len=maxlencount),
 print >>out_stats, ""
 
 out_stats.close()
