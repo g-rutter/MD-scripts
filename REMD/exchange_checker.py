@@ -4,6 +4,7 @@
 import bisect
 from argparse import ArgumentParser
 
+from glob import glob
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import numpy as np
@@ -43,13 +44,31 @@ def roundup(x,i):
 #  Parse arguments  #
 #####################
 
-inputfile_str = 'log.lammps'
-out_stats_str = 'REMD_stats.txt'
-out_xmgra_str = 'REMD_hist.agr'
+parser = ArgumentParser(description='Stats and graph about REMD temperature swaps.')
+parser.add_argument('--log', nargs='?', default='log.lammps', dest='logfile_str',
+      help='Name of lammps log file e.g. log.lammps with history of swaps.')
+parser.add_argument('--.in', nargs='?', default=None, dest='infile_str',
+      help='The input file from the simulation e.g. n16n-1.in')
+parser.add_argument('--outstats', nargs='?', default='REMD_stats.txt', dest='out_stats_str',
+      help='Filename for outputted stats text file.')
+parser.add_argument('--outxmg', nargs='?', default='REMD_hist.agr', dest='out_xmgra_str',
+      help='Filename for outputted stats text file.')
 
-inputfile = open(inputfile_str, "r")
-out_stats = open(out_stats_str, "w")
-out_xmgra = open(out_xmgra_str, "w")
+args = parser.parse_args()
+logfile = open(args.logfile_str, "r")
+out_stats = open(args.out_stats_str, "w")
+out_xmgra = open(args.out_xmgra_str, "w")
+
+#Look for infile automatically.
+if args.infile_str == None:
+   candidate_log_files = glob('*.in')+glob('../*.in')
+   try:
+      args.infile_str = candidate_log_files[0]
+      print "Using", args.infile_str, "for temperature information. Use",\
+            "--.in if this is wrong."
+   except IndexError:
+      print "No temperature info will be loaded, please put .in in this dir or parent dir",\
+            "if you want this info."
 
 ######################
 #  Read in RE swaps  #
@@ -57,9 +76,9 @@ out_xmgra = open(out_xmgra_str, "w")
 
 print "Reading in RE swaps"
 
-n_swaps = file_n_lines(inputfile_str)-3
+n_swaps = file_n_lines(args.logfile_str)-3
 
-for i_line, line in enumerate(inputfile):
+for i_line, line in enumerate(logfile):
 
    i_step = i_line - 3
    line_list = line.split(' ')
@@ -77,7 +96,39 @@ for i_line, line in enumerate(inputfile):
          swaps      = np.empty([n_swaps,n_replicas], dtype = int)
          swap_steps = np.empty([n_swaps],            dtype = int)
 
-inputfile.close()
+logfile.close()
+
+#####################
+#  Get temperature  #
+#####################
+
+if args.infile_str != None:
+   Temps=True
+   x_label="Temperature (K)"
+   Xs = np.empty(n_replicas, dtype=float)
+   X_major_ticks=10
+   with open(args.infile_str, 'r') as infile:
+
+      for line in infile:
+         line_list = line.split()
+
+         if len(line_list) == n_replicas+3 and\
+            '0' not in line_list and\
+            line_list[0] == 'variable':
+
+            print "Detected temperatures are: ",
+            for i, T in enumerate(line_list[3:]):
+               Xs[i] = T
+               print T,
+            print ""
+else:
+   Temps=False
+   x_label="Temperature index"
+   X_major_ticks=1
+   print "Using replica index instead of temperatures."
+   Xs = np.empty(n_replicas, dtype=int)
+   for i in range(n_replicas):
+      Xs[i]=i
 
 ###############
 #  Unshuffle  #
@@ -143,15 +194,6 @@ for i, replica_temp in enumerate(replicas_temps):
    for temp in range(n_replicas):
       counts[i][temp] = np.nonzero(replica_temp==temp)[0].shape[0]
 
-#stdev of counts at each temperature
-stddevs = counts.std(axis = 1)
-normed_stddevs = stddevs/n_swaps
-
-#Maxes for graphing
-maxcount    = max(stddevs.max(), counts.max())
-maxlencount = len(str(maxcount))
-maxleni     = len(str(n_replicas-1))
-
 try:
    full_trip_time = float(swap_steps[-1])/(float(fulltrips)/n_replicas)
 except ZeroDivisionError:
@@ -162,9 +204,26 @@ try:
 except ZeroDivisionError:
    round_trip_time = float("inf")
 
+########################
+#  STD devs and slope  #
+########################
+
+#stdev of counts at each temperature
+stddevs = counts.std(axis = 1)
+normed_stddevs = stddevs/n_swaps
+slope = np.empty(n_replicas-2, dtype=float)
+
+for i in range(1, n_replicas-1):
+   slope[i-1] = np.absolute( counts[i-1]-counts[i+1]).sum()/(float(Xs[i+1]-Xs[i-1])*n_replicas)
+
 ##############################
 #  Make out_stats text file  #
 ##############################
+
+#Maxes for graphing
+maxcount    = max(stddevs.max(), counts.max())
+maxlencount = len(str(maxcount))
+maxleni     = len(str(n_replicas-1))
 
 print >>out_stats, n_replicas , "replicas,", "%.2e steps." % (swap_steps[-1])
 print >>out_stats, ""
@@ -182,6 +241,9 @@ print >>out_stats, ""
 print >>out_stats, "Histogram of visits to temperatures:"
 print >>out_stats, ""
 print >>out_stats, " "*(maxleni + maxlencount + 4), ' '.join([ '{0:>{len}}'.format("T"+str(i), len=maxlencount) for i in range(n_replicas) ])
+if Temps:
+   print >>out_stats, "Temp (K):  "+" "*(maxleni + maxlencount - 8), ' '.join([ '{0:>{len}}'.format(str(int(Xs[i])), len=maxlencount) for i in range(n_replicas) ])
+   print >>out_stats, ""
 for i, replica_temp in enumerate(replicas_temps):
    print >>out_stats, "Replica", '{0:{len}}'.format(i, len=maxleni)+":",
    for temp in range(n_replicas):
@@ -190,17 +252,27 @@ for i, replica_temp in enumerate(replicas_temps):
    print >>out_stats, ""
 
 print >>out_stats, ""
+print >>out_stats, "Other stats"
 
 #STD
 print >>out_stats, '{0:{len}}'.format("STD:", len=maxleni+9),
 for temp in range(n_replicas):
    print >>out_stats, '{0:{len}}'.format(int(np.round(stddevs[temp])), len=maxlencount),
+
+#Slope
 print >>out_stats, ""
-#Normed STD
-print >>out_stats, '{0:{len}}'.format("Normed STD:", len=maxleni+9),
-for temp in range(n_replicas):
-   print >>out_stats, '{0:{len}}'.format(normed_stddevs[temp], len=maxlencount),
+print >>out_stats, '{0:{len}}'.format("Avg slope:", len=maxleni+9),
+print >>out_stats, '{0:>{len}}'.format('-', len=maxlencount),
+for temp in range(n_replicas-2):
+   print >>out_stats, '{0:{len}.0f}'.format(slope[temp], len=maxlencount),
+print >>out_stats, '{0:>{len}}'.format('-', len=maxlencount),
 print >>out_stats, ""
+
+##Normed STD
+#print >>out_stats, '{0:{len}}'.format("Normed STD:", len=maxleni+9),
+#for temp in range(n_replicas):
+   #print >>out_stats, '{0:{len}}'.format(normed_stddevs[temp], len=maxlencount),
+#print >>out_stats, ""
 
 out_stats.close()
 
@@ -213,22 +285,32 @@ print >>out_xmgra, "#"
 
 print >>out_xmgra, "@version 50122"
 print >>out_xmgra, "@with g0"
-print >>out_xmgra, "@    world 0, 0,", str(n_replicas-1)+",", str(roundup(maxcount,2))
-print >>out_xmgra, "@    title \"Visit count to temperatures by replicas\""
-print >>out_xmgra, "@    subtitle \"Each line is one of the", n_replicas, "replicas\""
-print >>out_xmgra, "@    xaxis  label \"Temperature index\""
-print >>out_xmgra, "@    yaxis  label \"Visits\""
+print >>out_xmgra, "@    WORLD", str(Xs.min()) + ", 0,", str(Xs.max())+",", str(roundup(maxcount,2))
+print >>out_xmgra, "@    TITLE \"Visit count to temperatures by replicas\""
+print >>out_xmgra, "@    SUBTITLE \"Each line is one of the", n_replicas, "replicas\""
+print >>out_xmgra, "@    XAXIS  label \""+x_label+"\""
+print >>out_xmgra, "@    YAXIS  label \"Visits\""
 #print >>out_xmgra, "@    xaxis  tick major" , str(roundup(maxcount/10,1))
 #print >>out_xmgra, "@    yaxis  tick minor ticks 1"
-print >>out_xmgra, "@    xaxis  tick major 1"
-print >>out_xmgra, "@    xaxis  tick minor ticks 0"
-print >>out_xmgra, "@    xaxis  tick major size 1.000000"
+print >>out_xmgra, "@    XAXIS  tick major", X_major_ticks
+print >>out_xmgra, "@    XAXIS  tick minor ticks 0"
+print >>out_xmgra, "@    XAXIS  tick major size 1.000000"
 
 for i in range(n_replicas):
    print >>out_xmgra, "@target G0.S"+str(i)
    print >>out_xmgra, "@type xy"
    for j in range(n_replicas):
-      print >>out_xmgra, j, counts[j][i]
+      print >>out_xmgra, Xs[j], counts[j][i]
+   print >>out_xmgra, "&"
+
+if Temps:
+
+   print >>out_xmgra, "@    s16 symbol 4"
+   print >>out_xmgra, "@    s16 symbol size 0.730000"
+   print >>out_xmgra, "@target G0.S"+str(n_replicas)
+   print >>out_xmgra, "@type xy"
+   for j in range(n_replicas):
+      print >>out_xmgra, Xs[j], 0
    print >>out_xmgra, "&"
 
 out_xmgra.close()
