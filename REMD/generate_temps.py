@@ -53,8 +53,19 @@ for i in range(samples):
    count+=density_norm[i]
 
 nonlinear_temps[-1]=linear_temps[-1]
+maxlen=0
+temp_str_list=[]
 
 print "Temperature list:"
 for temp in round(nonlinear_temps, 2):
-   print temp,
+   temp_str = str(temp)
+   print temp_str,
+
+   maxlen = max (len(temp_str), maxlen)
+   temp_str_list.append(temp_str)
 print ""
+
+print ""
+print "Formatted for an input script:"
+print "variable t world", " ".join(['{i:<{len}}'.format(i=i, len=maxlen) for i in temp_str_list])
+print "variable p world", " ".join(['{i:<{len}}'.format(i=i, len=maxlen) for i in range(args.N)])
