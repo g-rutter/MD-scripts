@@ -305,8 +305,8 @@ for i in range(n_replicas):
 
 if Temps:
 
-   print >>out_xmgra, "@    s16 symbol 4"
-   print >>out_xmgra, "@    s16 symbol size 0.730000"
+   print >>out_xmgra, "@    s"+str(n_replicas)+" symbol 4"
+   print >>out_xmgra, "@    s"+str(n_replicas)+" symbol size 0.730000"
    print >>out_xmgra, "@target G0.S"+str(n_replicas)
    print >>out_xmgra, "@type xy"
    for j in range(n_replicas):
