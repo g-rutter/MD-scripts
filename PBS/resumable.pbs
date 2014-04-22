@@ -1,11 +1,23 @@
 # vim: set filetype=sh:
-#TODO Make it concatenate output? -> replace thermo with dump which can append.
-#TODO verify results are good and potential/totE doesn't jump about between runs or jobs.
 
 #!/bin/bash
 #PBS -l nodes=16:ppn=1,pvmem=1000mb,walltime=00:02:00
 #PBS -j oe
 #PBS -V
+
+##########
+#  Help  #
+##########
+
+#How to use this script:
+
+# 1 - Copy this script and the inputs folder into your job dir.
+# 2 - In this script, set at least these paramaters: nodes, walltime, MAX_JOBS
+#     MAX_RUNS, enable_job_restart, debug, steps_per_run. Make sure
+#     steps_per_run allows for 10s of runs per job.
+# 3 - In 0.in and 1.in, set variables t and p and w, same in both scripts. Set
+#     N_data and N_swap same or different in each script.
+# 4 - qsub resumable.pbs
 
 ##############
 #  Settings  #
@@ -23,8 +35,8 @@ readonly enable_job_restart=true
 readonly debug=true
 
 if $debug; then
-   readonly program="mpirun lmp_minerva"
-   readonly pause=0
+   readonly program="echo"
+   readonly pause=5
    readonly buffer=5
    readonly steps_per_run=30000
 else
@@ -48,7 +60,8 @@ readonly args=($@)
 readonly PBS_JOBNUM=`echo $PBS_JOBID | sed 's/\..*//'`
 readonly end_time=$((`date +%s`+$PBS_WALLTIME))
 if [[ ${args[0]} = '' ]]; then readonly JOB=0; else readonly JOB=${args[0]}; fi
-if [[ ${args[2]} = '' ]]; then readonly SUMMARY_FILE="summary.${PBS_JOBNUM}"; else readonly SUMMARY_FILE=${args[2]}; fi
+if [[ ${args[2]} = '' ]]; then readonly SUMMARY_FILE="summary.${PBS_JOBNUM}"
+else readonly SUMMARY_FILE=${args[2]}; fi
 
 #Vars that will change
 if [[ ${args[1]} = '' ]]; then RUN=0; else RUN=${args[1]}; fi
