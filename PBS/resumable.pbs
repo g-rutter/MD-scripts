@@ -1,11 +1,23 @@
 # vim: set filetype=sh:
-#TODO Make it concatenate output? -> replace thermo with dump which can append.
-#TODO verify results are good and potential/totE doesn't jump about between runs or jobs.
 
 #!/bin/bash
-#PBS -l nodes=16:ppn=1,pvmem=1000mb,walltime=00:10:00
+#PBS -l nodes=16:ppn=1,pvmem=1000mb,walltime=00:02:00
 #PBS -j oe
 #PBS -V
+
+##########
+#  Help  #
+##########
+
+#How to use this script:
+
+# 1 - Copy this script and the inputs folder into your job dir.
+# 2 - In this script, set at least these paramaters: nodes, walltime, MAX_JOBS
+#     MAX_RUNS, enable_job_restart, debug, steps_per_run. Make sure
+#     steps_per_run allows for 10s of runs per job.
+# 3 - In 0.in and 1.in, set variables t and p and w, same in both scripts. Set
+#     N_data and N_swap same or different in each script.
+# 4 - qsub resumable.pbs
 
 ##############
 #  Settings  #
@@ -23,10 +35,10 @@ readonly enable_job_restart=true
 readonly debug=true
 
 if $debug; then
-   readonly program="mpirun lmp_minerva"
-   readonly pause=0
+   readonly program="echo"
+   readonly pause=5
    readonly buffer=5
-   readonly steps_per_run=3000
+   readonly steps_per_run=30000
 else
    readonly program="mpirun lmp_minerva"
    readonly pause=0
@@ -40,20 +52,21 @@ fi
 
 cd $PBS_O_WORKDIR
 echo "Start time of job $JOB: `date`"
+rm -rf logs
+rm -rf traj
 
+#Readonly vars first
 readonly args=($@)
-JOB=${args[0]}
-RUN=${args[1]}
-SUMMARY_FILE=${args[2]}
+readonly PBS_JOBNUM=`echo $PBS_JOBID | sed 's/\..*//'`
+readonly end_time=$((`date +%s`+$PBS_WALLTIME))
+if [[ ${args[0]} = '' ]]; then readonly JOB=0; else readonly JOB=${args[0]}; fi
+if [[ ${args[2]} = '' ]]; then readonly SUMMARY_FILE="summary.${PBS_JOBNUM}"
+else readonly SUMMARY_FILE=${args[2]}; fi
+
+#Vars that will change
+if [[ ${args[1]} = '' ]]; then RUN=0; else RUN=${args[1]}; fi
 allowance=$buffer
 exit_reason='Unknown'
-readonly PBS_JOBNUM=`echo $PBS_JOBID | sed 's/\..*//'`
-
-if [[ $JOB -eq 0 ]]; then JOB=0; fi
-if [[ $RUN -eq 0 ]]; then RUN=0; fi
-if [[ $SUMMARY_FILE = '' ]]; then SUMMARY_FILE="summary.${PBS_JOBNUM}"; fi
-
-end_time=$((`date +%s`+$PBS_WALLTIME))
 this_script="${PBS_O_WORKDIR}/${PBS_JOBNAME}"
 
 #########################
@@ -68,7 +81,7 @@ if ! [[ -f $SUMMARY_FILE ]]; then
 fi
 
 #Start of every job
-printf "\nJOB (JOB ID): %d (%d)\n" $RUN $PBS_JOBNUM >>$SUMMARY_FILE
+printf "\nJOB (JOB ID): %d (%d)\n" $JOB $PBS_JOBNUM >>$SUMMARY_FILE
 printf "JOB START TIMEDATE: %s\n\n" "`date`" >>$SUMMARY_FILE
 echo   " RUN | START STEP | START TIME | ELAPSED " >>$SUMMARY_FILE
 
@@ -142,8 +155,6 @@ make_input() {
       return
    fi
 
-   echo "Making an input script for this run $RUN"
-
    #Get correct world variable as string
    timestep=$(($prev_runs*$steps_per_run))
    worldvar=(`tail -1 logs/log.lammps`)
@@ -153,7 +164,7 @@ make_input() {
    if ! [[ $log_timestep -eq $timestep ]]; then
       echo "WARNING: Timestep is wacky! (Logged timestep=$log_timestep, prev_runs*steps_per_run=$timestep"
    else
-      echo "(Start timestep=$timestep)"
+      echo "Start timestep = $timestep"
    fi
 
    swaps=${worldvar[*]:1}
