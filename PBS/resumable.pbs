@@ -1,7 +1,7 @@
 # vim: set filetype=sh:
 
 #!/bin/bash
-#PBS -l nodes=16:ppn=1,pvmem=1000mb,walltime=00:02:00
+#PBS -l nodes=83:ppn=2,pvmem=1000mb,walltime=48:00:00
 #PBS -j oe
 #PBS -V
 
@@ -12,27 +12,29 @@
 #How to use this script:
 
 # 1 - Copy this script and the inputs folder into your job dir.
-# 2 - In this script, set at least these paramaters: nodes, walltime, MAX_JOBS
-#     MAX_RUNS, enable_job_restart, debug, steps_per_run. Make sure
-#     steps_per_run allows for 10s of runs per job.
+# 2 - In this script, set at least these paramaters: nodes, walltime, ppn,
+#     MAX_JOBS, MAX_RUNS, enable_job_restart, cores_per_lmp_instance, debug,
+#     steps_per_run. Make sure steps_per_run allows for 10s of runs per job.
 # 3 - In 0.in and 1.in, set variables t and p and w, same in both scripts. Set
-#     N_data and N_swap same or different in each script.
-# 4 - qsub resumable.pbs
+#     N_data and N_swap same or different in each script. Set M to correct val
+#     in 'read_data n16n-M-$p.lmp'
+# 4 - Run qsub resumable.pbs
 
 ##############
 #  Settings  #
 ##############
 
 #max overall runs (executions of $program) and jobs (submissions of this script)
-readonly MAX_RUNS=25
-readonly MAX_JOBS=25
+readonly MAX_RUNS=3030
+readonly MAX_JOBS=200
 readonly enable_job_restart=true
+readonly cores_per_lmp_instance=2
 
 ####################
 #  Debug settings  #
 ####################
 
-readonly debug=true
+readonly debug=false
 
 if $debug; then
    readonly program="echo"
@@ -62,6 +64,8 @@ readonly end_time=$((`date +%s`+$PBS_WALLTIME))
 if [[ ${args[0]} = '' ]]; then readonly JOB=0; else readonly JOB=${args[0]}; fi
 if [[ ${args[2]} = '' ]]; then readonly SUMMARY_FILE="summary.${PBS_JOBNUM}"
 else readonly SUMMARY_FILE=${args[2]}; fi
+readonly n_lmps=$(( ${PBS_NP}/${cores_per_lmp_instance} ))
+readonly partition="${n_lmps}x${cores_per_lmp_instance}"
 
 #Vars that will change
 if [[ ${args[1]} = '' ]]; then RUN=0; else RUN=${args[1]}; fi
@@ -117,7 +121,6 @@ run_program() {
    input_script="inputs/${RUN}.in"
    log_file="logs/tmp/log.lammps"
    screen_file="logs/tmp/screen"
-   partition="${PBS_NP}x1"
 
    prev_runs=$(($RUN-1))
    make_input
@@ -177,13 +180,13 @@ run_summary() {
 join_dcd() {
    if [[ $RUN -eq 1 ]]; then
       #Just mv from tmp dir to traj dir.
-      for i in `seq 0 $((${PBS_NP}-1))`; do
+      for i in `seq 0 $((${n_lmps}-1))`; do
          mv traj/tmp/${i}.dcd traj/${i}.dcd&
       done
    elif [[ $RUN -ge 2 ]]; then
       #Join up. Delete first frame of the run because its same as last frame of last run.
       rename .dcd -old.dcd traj/[0-9]*.dcd
-      for i in `seq 0 $((${PBS_NP}-1))`; do
+      for i in `seq 0 $((${n_lmps}-1))`; do
          ( catdcd -o traj/tmp/${i}.chop.dcd -first 2 traj/tmp/${i}.dcd >/dev/null; \
             catdcd -o traj/${i}.dcd traj/${i}-old.dcd traj/tmp/${i}.chop.dcd >/dev/null) &
       done
@@ -201,7 +204,7 @@ join_logs (){
       mkdir -p logs/equil
       cp logs/tmp/log.lammps logs/equil/log.lammps
       cp logs/tmp/screen logs/equil/screen
-      for i in `seq 0 $((${PBS_NP}-1))`; do
+      for i in `seq 0 $((${n_lmps}-1))`; do
          cp logs/tmp/log.lammps.$i logs/equil/log.lammps.$i
          cp logs/tmp/screen.$i logs/equil/screen.$i
       done
@@ -214,7 +217,7 @@ join_logs (){
       awk 'NR==4 {print}' logs/tmp/log.lammps >logs/log.lammps
       awk 'NR==5 {print}' logs/tmp/screen >logs/screen
 
-      for i in `seq 0 $((${PBS_NP}-1))`; do
+      for i in `seq 0 $((${n_lmps}-1))`; do
          cp logs/tmp/log.lammps.$i logs/1/log.lammps.$i
          cp logs/tmp/screen.$i logs/1/screen.$i
       done
@@ -224,7 +227,7 @@ join_logs (){
       tail --lines=+5 logs/tmp/log.lammps >>logs/log.lammps
       tail --lines=+6 logs/tmp/screen >>logs/screen
 
-      for i in `seq 0 $((${PBS_NP}-1))`; do
+      for i in `seq 0 $((${n_lmps}-1))`; do
          ( awk '/Step/ {thermo="true"}; /Loop/ {thermo="false"}; {if(thermo=="true") print $0}'\
             logs/tmp/log.lammps.$i | head -n -1 | tail --lines=+2 >>logs/log.lammps.$i ) &
       done
