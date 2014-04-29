@@ -1,7 +1,7 @@
 # vim: set filetype=sh:
 
 #!/bin/bash
-#PBS -l nodes=83:ppn=2,pvmem=1000mb,walltime=48:00:00
+#PBS -l nodes=16:ppn=1,pvmem=1000mb,walltime=48:00:00
 #PBS -j oe
 #PBS -V
 
@@ -12,50 +12,51 @@
 #How to use this script:
 
 # 1 - Copy this script and the inputs folder into your job dir.
-# 2 - In this script, set at least these paramaters: nodes, walltime, ppn,
-#     MAX_JOBS, MAX_RUNS, enable_job_restart, cores_per_lmp_instance, debug,
-#     steps_per_run. Make sure steps_per_run allows for 10s of runs per job.
+#     (Script won't work if it's not in dir you submit from!!!)
+# 2 - In this script, set DEBUG and the settings under Settings or Debug
+#     settings. Make sure steps_per_run allows for 10s of runs per job.
 # 3 - In 0.in and 1.in, set variables t and p and w, same in both scripts. Set
 #     N_data and N_swap same or different in each script. Set M to correct val
-#     in 'read_data n16n-M-$p.lmp'
+#     in 'read_data lmp/n16n-M-$p.lmp'. Set no. of run steps in 0.in.
 # 4 - Run qsub resumable.pbs
+
+cd $PBS_O_WORKDIR
+readonly DEBUG=false
 
 ##############
 #  Settings  #
 ##############
 
-#max overall runs (executions of $program) and jobs (submissions of this script)
-readonly MAX_RUNS=3030
-readonly MAX_JOBS=200
-readonly enable_job_restart=true
-readonly cores_per_lmp_instance=2
+if ! $DEBUG; then
+   readonly program="mpirun lmp_minerva"
+
+   readonly MAX_RUNS=100
+   readonly MAX_JOBS=5
+   readonly enable_job_restart=true
+   readonly cores_per_prog_instance=1
+   readonly steps_per_run=30000000
+   readonly buffer=600
+   readonly pause=0
 
 ####################
 #  Debug settings  #
 ####################
 
-readonly debug=false
-
-if $debug; then
-   readonly program="echo"
-   readonly pause=5
-   readonly buffer=5
-   readonly steps_per_run=30000
 else
    readonly program="mpirun lmp_minerva"
-   readonly pause=0
+
+   readonly MAX_RUNS=100
+   readonly MAX_JOBS=2
+   readonly enable_job_restart=true
+   readonly cores_per_prog_instance=1
+   readonly steps_per_run=300000
    readonly buffer=600
-   readonly steps_per_run=30000000
+   readonly pause=0
 fi
 
 ###########
 #  Setup  #
 ###########
-
-cd $PBS_O_WORKDIR
-echo "Start time of job $JOB: `date`"
-rm -rf logs
-rm -rf traj
 
 #Readonly vars first
 readonly args=($@)
@@ -64,14 +65,41 @@ readonly end_time=$((`date +%s`+$PBS_WALLTIME))
 if [[ ${args[0]} = '' ]]; then readonly JOB=0; else readonly JOB=${args[0]}; fi
 if [[ ${args[2]} = '' ]]; then readonly SUMMARY_FILE="summary.${PBS_JOBNUM}"
 else readonly SUMMARY_FILE=${args[2]}; fi
-readonly n_lmps=$(( ${PBS_NP}/${cores_per_lmp_instance} ))
-readonly partition="${n_lmps}x${cores_per_lmp_instance}"
+readonly n_lmps=$(( ${PBS_NP}/${cores_per_prog_instance} ))
+
+#Command-line options for LAMMPS
+readonly partition="${n_lmps}x${cores_per_prog_instance}"
+readonly log_file="logs/tmp/log.lammps"
+readonly screen_file="logs/tmp/screen"
 
 #Vars that will change
 if [[ ${args[1]} = '' ]]; then RUN=0; else RUN=${args[1]}; fi
 allowance=$buffer
 exit_reason='Unknown'
 this_script="${PBS_O_WORKDIR}/${PBS_JOBNAME}"
+
+echo "Start time of job $JOB: `date`"
+
+####################
+#  Various checks  #
+####################
+
+if [[ $RUN -lt $JOB ]]; then
+   echo "WARNING: RUNS(=$RUN) < JOBS(=$JOB). This makes no sense."
+fi
+if [[ $DEBUG ]]; then
+   echo "WARNING: Debug is turned on."
+fi
+if [[ $JOB -eq 0 ]]; then
+   files=($(shopt -s nullglob; echo logs/*))
+   if [[ ${#files[*]} -gt 0 ]]; then
+      echo "WARNING: log dir not empty. Files may be mangled or appended to."
+   fi
+   files=($(shopt -s nullglob; echo traj/*))
+   if [[ ${#files[*]} -gt 0 ]]; then
+      echo "WARNING: traj dir not empty. Files may be mangled or appended to."
+   fi
+fi
 
 #########################
 #  Summary file header  #
@@ -119,8 +147,6 @@ run_program() {
 
    #Set up command-line options
    input_script="inputs/${RUN}.in"
-   log_file="logs/tmp/log.lammps"
-   screen_file="logs/tmp/screen"
 
    prev_runs=$(($RUN-1))
    make_input
@@ -132,13 +158,14 @@ run_program() {
    ARGS="-in $input_script -p $partition -log $log_file -screen $screen_file -var STEPS $steps_per_run -var RUN $RUN"
    echo "Command: $program $ARGS"
    $program $ARGS
-   sleep ${pause}s
 
    #Kill if there's an error in running the program
    if (( $? )); then
       echo "Exiting job and not restarting because $program exited with error."
       exit
    fi
+
+   sleep ${pause}s
 
    ##########
    #  Post  #
