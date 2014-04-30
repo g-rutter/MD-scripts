@@ -87,7 +87,7 @@ echo "Start time of job $JOB: `date`"
 if [[ $RUN -lt $JOB ]]; then
    echo "WARNING: RUNS(=$RUN) < JOBS(=$JOB). This makes no sense."
 fi
-if [[ $DEBUG ]]; then
+if $DEBUG; then
    echo "WARNING: Debug is turned on."
 fi
 if [[ $JOB -eq 0 ]]; then
