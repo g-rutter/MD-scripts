@@ -19,6 +19,7 @@
 #     N_data and N_swap same or different in each script. Set M to correct val
 #     in 'read_data lmp/n16n-M-$p.lmp'. Set no. of run steps in 0.in.
 # 4 - Run qsub resumable.pbs
+#     If resuming, run as qsub -F "\"JOB RUN SUMMARY_FILE\"" resumable.pbs
 
 cd $PBS_O_WORKDIR
 readonly DEBUG=false
