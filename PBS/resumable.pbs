@@ -59,6 +59,8 @@ fi
 #  Setup  #
 ###########
 
+MAX_TS=2147483647
+
 #Readonly vars first
 readonly args=($@)
 readonly PBS_JOBNUM=`echo $PBS_JOBID | sed 's/\..*//'`
@@ -150,6 +152,7 @@ run_program() {
     input_script="inputs/${RUN}.in"
 
     prev_runs=$(($RUN-1))
+    timestep=`get_timestep`
     make_input
 
     ##################
@@ -178,28 +181,41 @@ run_program() {
     echo "End time of run $RUN: `date`"
     echo ""
 }
+get_timestep(){
+    if [[ $RUN -le 1 ]]; then
+        ts=0
+    else
+        worldvar=(`tail -1 logs/log.lammps`)
+        ts=${worldvar[0]}
+    fi
+
+    ##########################################
+    #  Reset timestep when it gets too big.  #
+    ##########################################
+
+    if [[ $(($ts+$steps_per_run)) -ge $MAX_TS ]]; then
+        ts=0
+    fi
+
+    echo $ts
+}
 make_input() {
     #Make an input file for next time.
     if [[ $RUN -le 1 ]]; then
-        timestep=0
         echo "No need to make an input script for run $RUN"
         return
     fi
 
-    #Get correct world variable as string
-    timestep=$(($prev_runs*$steps_per_run))
+    #Get and set correct world variable as string
     worldvar=(`tail -1 logs/log.lammps`)
-    log_timestep=${worldvar[0]}
-
-    #sanity check
-    if ! [[ $log_timestep -eq $timestep ]]; then
-        echo "WARNING: Timestep is wacky! (Logged timestep=$log_timestep, prev_runs*steps_per_run=$timestep"
-    else
-        echo "Start timestep = $timestep"
-    fi
-
     swaps=${worldvar[*]:1}
     sed "s/\(variable w world \).*/\1$swaps/" inputs/1.in >inputs/${RUN}.in
+
+    #Do a timestep reset if timestep has been reset to 0 in get_timestep
+    if [[ $timestep -eq 0 ]]; then
+        sed -i 's/#reset_timestep 0/reset_timestep 0/' inputs/${RUN}.in
+    fi
+
 }
 run_summary() {
     printf >>$SUMMARY_FILE "%4d |%11.3e |%11s | %8s\n" \
