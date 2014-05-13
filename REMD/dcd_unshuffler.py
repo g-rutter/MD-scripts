@@ -70,6 +70,9 @@ def get_temp ( swaps, swap_steps, step ):
 
 print ("Reading in REMD swaps from log.")
 
+n_excluded_lines=0
+excluded_lines=[]
+
 with open(LOGFILE) as REfile:
    for line in REfile:
 
@@ -81,8 +84,11 @@ with open(LOGFILE) as REfile:
          swaps.append( [ int(item) for item in line_list[1:] ] )
 
       except AssertionError:
-         if line_list[:2] == ['Running', 'on']:
-            n_replicas = int(line_list[2])
+          n_excluded_lines+=1
+          excluded_lines.append( line )
+
+n_replicas = len(line_list)-1
+print (n_excluded_lines, "were excluded.")
 
 ###############################################################
 #  Check in-files exist, prepare for tmp files and out-files  #
