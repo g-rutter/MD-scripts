@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 DCDs=(`find . -name "T*.dcd" | sort -n -t T -k 2`)
 N_trajs=${#DCDs[*]}
