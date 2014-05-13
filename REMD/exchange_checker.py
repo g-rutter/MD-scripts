@@ -48,27 +48,55 @@ parser = ArgumentParser(description='Stats and graph about REMD temperature swap
 parser.add_argument('--log', nargs='?', default='log.lammps', dest='logfile_str',
         help='Name of lammps log file e.g. log.lammps with history of swaps.')
 parser.add_argument('--.in', nargs='?', default=None, dest='infile_str',
-        help='The input file from the simulation e.g. n16n-1.in')
+        help='The input file from the simulation e.g. n16n-1.in. Set to "auto" to autodetect.')
 parser.add_argument('--outstats', nargs='?', default='REMD_stats.txt', dest='out_stats_str',
         help='Filename for outputted stats text file.')
 parser.add_argument('--outxmg', nargs='?', default='REMD_hist.agr', dest='out_xmgra_str',
         help='Filename for outputted stats text file.')
 
 args = parser.parse_args()
-logfile = open(args.logfile_str, "r")
 out_stats = open(args.out_stats_str, "w")
 out_xmgra = open(args.out_xmgra_str, "w")
 
 #Look for infile automatically.
-if args.infile_str == None:
+if args.infile_str == "auto":
     candidate_log_files = glob('*.in')+glob('../*.in')
     try:
         args.infile_str = candidate_log_files[0]
-        print "Using", args.infile_str, "for temperature information. Use",\
-                "--.in if this is wrong."
+        print "Using", args.infile_str, "for temperature information"
     except IndexError:
         print "No temperature info will be loaded, please put .in in this dir or parent dir",\
-                "if you want this info."
+                "if you want to use autodetect."
+
+################################
+#  Get properties of log file  #
+################################
+
+n_header_lines = 0
+
+with open(args.logfile_str, 'r') as logfile:
+    for i_line, line in enumerate(logfile):
+
+        line_list = line.split(' ')
+
+        if not line[0].isdigit():
+            n_header_lines += 1
+
+        else:
+            n_replicas = len( line.split(' ') ) - 1
+            break
+
+n_swaps = file_n_lines(args.logfile_str)-n_header_lines
+
+swaps      = np.empty([n_swaps,n_replicas], dtype = int)
+swap_steps = np.empty([n_swaps],            dtype = int)
+
+print ""
+print "Stats on log file:"
+print "n_replicas: ", n_replicas
+print "n_swaps: ", n_swaps
+print "n_header_lines: ", n_header_lines
+print ""
 
 ######################
 #  Read in RE swaps  #
@@ -76,27 +104,17 @@ if args.infile_str == None:
 
 print "Reading in RE swaps"
 
-n_swaps = file_n_lines(args.logfile_str)-3
+with open(args.logfile_str, 'r') as logfile:
+    for i_line, line in enumerate(logfile):
 
-for i_line, line in enumerate(logfile):
+        if i_line < n_header_lines:
+            continue
 
-    i_step = i_line - 3
-    line_list = line.split(' ')
-
-    try:
-        assert line[0].isdigit()
+        i_step = i_line - n_header_lines
+        line_list = line.split(' ')
 
         swap_steps[i_step] = int(line_list[0])
         swaps[i_step][:]   = line_list[1:]
-
-    except AssertionError:
-        if line_list[:2] == ['Running', 'on']:
-            n_replicas = int(line_list[2])
-
-            swaps      = np.empty([n_swaps,n_replicas], dtype = int)
-            swap_steps = np.empty([n_swaps],            dtype = int)
-
-logfile.close()
 
 #####################
 #  Get temperature  #
