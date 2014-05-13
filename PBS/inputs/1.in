@@ -9,8 +9,11 @@ variable prev_run equal ${RUN}-1
 read_restart restart/${prev_run}/$p
 include   ../../DC.params
 
-variable N_swap    equal 1000
-variable N_data    equal 100000
+#Line below is uncommented when necessary.
+#reset_timestep 0
+
+variable N_swap    equal 500
+variable N_data    equal 10000
 variable seed equal 23441
 
 fix zeromomfix all momentum 50 linear 1 1 1 angular
