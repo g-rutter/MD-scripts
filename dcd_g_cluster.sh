@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 #################
 #  Parse input  #
@@ -14,7 +14,6 @@ else
 fi
 
 DCD_file=$1
-DCD_filename=$(basename "$DCD_file")
 DCD_filename_noext="${DCD_file%.*}"
 
 PSF_file=$2
@@ -95,37 +94,61 @@ fi
 #  Cluster count vs time  #
 ###########################
 
+echo "------------------------------"
+echo ""
+
 CLIDs=(`tail +16 ${output_prefix}_clust_id.xvg | sed 's/^ *[0-9]\+ \+//'`)
 Unique_CLIDs=()
 N_uniq_CLIDs=0
 CLID_count=()
 
-if ! [ -f ${output_prefix}_nclusters.xvg ]; then
+echo "Calculating number of clusters over time in file ${output_prefix}_nclusters.xvg"
+echo "Calculating population of clusters in file ${output_prefix}_cluster_counts.xvg"
 
-   echo "Calculating number of clusters over time in file ${output_prefix}_nclusters.xvg"
-   echo "Calculating population of clusters in file ${output_prefix}_cluster_counts.xvg"
+echo "@    title       \"Number of clusters over time\"" >${output_prefix}_nclusters.xvg
+echo "@    xaxis label \"Frame\""                       >>${output_prefix}_nclusters.xvg
+echo "@    yaxis label \"Number of clusters found\""    >>${output_prefix}_nclusters.xvg
 
-   echo "@    title       \"Number of clusters over time\"" >${output_prefix}_nclusters.xvg
-   echo "@    xaxis label \"Frame\""                       >>${output_prefix}_nclusters.xvg
-   echo "@    yaxis label \"Number of clusters found\""    >>${output_prefix}_nclusters.xvg
+echo "@    title       \"Population of clusters\""       >${output_prefix}_cluster_counts.xvg
+echo "@    xaxis label \"Cluster\""                     >>${output_prefix}_cluster_counts.xvg
+echo "@    yaxis label \"Population\""                  >>${output_prefix}_cluster_counts.xvg
 
-   echo "@    title       \"Population of clusters\""       >${output_prefix}_cluster_counts.xvg
-   echo "@    xaxis label \"Cluster\""                     >>${output_prefix}_cluster_counts.xvg
-   echo "@    yaxis label \"Population\""                  >>${output_prefix}_cluster_counts.xvg
+for i in `seq 0 $((${#CLIDs[@]}-1))`; do
+  CLID=${CLIDs[$i]}
+  if ! [[ ${Unique_CLIDs[@]} =~ $CLID"," ]]; then
+     Unique_CLIDs+=("$CLID,")
+  fi
 
-   for i in `seq 0 $((${#CLIDs[@]}-1))`; do
-      CLID=${CLIDs[$i]}
-      if ! [[ ${Unique_CLIDs[@]} =~ $CLID"," ]]; then
-         Unique_CLIDs+=("$CLID,")
-      fi
+  echo -e "$i\t${#Unique_CLIDs[@]}" >> ${output_prefix}_nclusters.xvg
 
-      echo -e "$i\t${#Unique_CLIDs[@]}" >> ${output_prefix}_nclusters.xvg
+  CLID_count[$CLID]=$((${CLID_count[$CLID]}+1))
+done
 
-      CLID_count[$CLID]=$((${CLID_count[$CLID]}+1))
-   done
+for i in `seq 1 $((${#CLID_count[@]}))`; do
+  echo -e "$i\t${CLID_count[$i]}" >> ${output_prefix}_cluster_counts.xvg
+done
 
-   for i in `seq 1 $((${#CLID_count[@]}))`; do
-      echo -e "$i\t${CLID_count[$i]}" >> ${output_prefix}_cluster_counts.xvg
-   done
+####################################################
+#  DCD of frames that went into the top structure  #
+####################################################
 
-fi
+echo "------------------------------"
+echo ""
+
+echo "Creating DCDs of frames that make the first cluster."
+
+pdb_frames=`awk '/^[^@#]/{if ($2==1){ print $1}}' ${output_prefix}_clust_id.xvg`
+echo pdb_frames: $pdb_frames
+
+mkdir temp_dcd
+
+for pdb_frame in ${pdb_frames[*]}; do
+    dcd_frame=$((((pdb_frame-1)*$stride)+1))
+    echo $dcd_frame
+    catdcd -o temp_dcd/${dcd_frame}.dcd -first $dcd_frame -last $dcd_frame ${DCD_file}
+done
+
+catdcd -o ${output_prefix}_clust_1_frames.dcd temp_dcd/*
+rm -rf temp_dcd
+
+
