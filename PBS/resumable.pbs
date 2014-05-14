@@ -15,9 +15,8 @@
 #     (Script won't work if it's not in dir you submit from!!!)
 # 2 - In this script, set DEBUG and the settings under Settings or Debug
 #     settings. Make sure steps_per_run allows for 10s of runs per job.
-# 3 - In 0.in and 1.in, set variables t and p and w, same in both scripts. Set
-#     N_data and N_swap same or different in each script. Set M to correct val
-#     in 'read_data lmp/n16n-M-$p.lmp'. Set no. of run steps in 0.in.
+# 3 - In 0.in and 1.in, set variables t and p and w, same in both scripts.
+#     Set M val in 'read_data lmp/n16n-M-$p.lmp'. Set no. of run steps in 0.in.
 # 4 - Run qsub resumable.pbs
 #     If resuming, run as qsub -F "\"JOB RUN SUMMARY_FILE\"" resumable.pbs
 
@@ -39,6 +38,9 @@ if ! $DEBUG; then
     readonly buffer=600
     readonly pause=0
 
+    readonly N_data=10000
+    readonly N_swap=500
+
 ####################
 #  Debug settings  #
 ####################
@@ -50,16 +52,17 @@ else
     readonly MAX_JOBS=2
     readonly enable_job_restart=true
     readonly cores_per_prog_instance=1
-    readonly steps_per_run=300000
-    readonly buffer=600
+    readonly steps_per_run=30000
+    readonly buffer=60
     readonly pause=0
+
+    readonly N_data=10000
+    readonly N_swap=500
 fi
 
 ###########
 #  Setup  #
 ###########
-
-MAX_TS=2147483647
 
 #Readonly vars first
 readonly args=($@)
@@ -159,7 +162,7 @@ run_program() {
     #  Main command  #
     ##################
 
-    ARGS="-in $input_script -p $partition -log $log_file -screen $screen_file -var STEPS $steps_per_run -var RUN $RUN"
+    ARGS="-in $input_script -p $partition -log $log_file -screen $screen_file -var STEPS $steps_per_run -var RUN $RUN -var N_data $N_data -var N_swap $N_swap"
     echo "Command: $program $ARGS"
     $program $ARGS
 
@@ -182,19 +185,12 @@ run_program() {
     echo ""
 }
 get_timestep(){
+    #Each run starts at local timestep 0. This func tracks the global timestep.
     if [[ $RUN -le 1 ]]; then
         ts=0
     else
         worldvar=(`tail -1 logs/log.lammps`)
         ts=${worldvar[0]}
-    fi
-
-    ##########################################
-    #  Reset timestep when it gets too big.  #
-    ##########################################
-
-    if [[ $(($ts+$steps_per_run)) -ge $MAX_TS ]]; then
-        ts=0
     fi
 
     echo $ts
@@ -210,11 +206,6 @@ make_input() {
     worldvar=(`tail -1 logs/log.lammps`)
     swaps=${worldvar[*]:1}
     sed "s/\(variable w world \).*/\1$swaps/" inputs/1.in >inputs/${RUN}.in
-
-    #Do a timestep reset if timestep has been reset to 0 in get_timestep
-    if [[ $timestep -eq 0 ]]; then
-        sed -i 's/#reset_timestep 0/reset_timestep 0/' inputs/${RUN}.in
-    fi
 
 }
 run_summary() {
@@ -242,7 +233,7 @@ join_dcd() {
 join_logs (){
     #log.lammps and screen files are joined together relatively intact.
     #{log.lammps,screen}.$i files are only kept if $RUN is 0 or 1, 
-    #otherwise a continuous file thermo_output is kept.
+    #otherwise a continuous file of thermo_output is kept.
     if [[ $RUN -eq 0 ]]; then
         #Just cp and call equil logs.
         mkdir -p logs/equil
@@ -254,10 +245,12 @@ join_logs (){
         done
 
     elif [[ $RUN -eq 1 ]]; then
-        #Just cp
+        #cp to logs/1
         mkdir -p logs/1
         cp logs/tmp/log.lammps logs/1/log.lammps
         cp logs/tmp/screen logs/1/screen
+
+        #copy the first line. rest of file is copied in next if clause.
         awk 'NR==4 {print}' logs/tmp/log.lammps >logs/log.lammps
         awk 'NR==5 {print}' logs/tmp/screen >logs/screen
 
@@ -268,12 +261,21 @@ join_logs (){
     fi
 
     if [[ $RUN -ge 1 ]]; then
-        tail --lines=+5 logs/tmp/log.lammps >>logs/log.lammps
+        #Append thermo output to master log.lammps files, correcting timestep.
+        awk '{if (NR>4) {print ((NR-4)*'$N_swap')+'$timestep' substr($0, index($0, " "$2) )}}'\
+            logs/tmp/log.lammps >>logs/log.lammps
+        #Append output to screen files, leaving timestep as it is.
         tail --lines=+6 logs/tmp/screen >>logs/screen
 
         for i in `seq 0 $((${n_lmps}-1))`; do
-            ( awk '/Step/ {thermo="true"}; /Loop/ {thermo="false"}; {if(thermo=="true") print $0}'\
-                logs/tmp/log.lammps.$i | head -n -1 | tail --lines=+2 >>logs/log.lammps.$i ) &
+            #Append thermo output to master log.lammps.$i files, correcting timestep.
+            (
+            awk '
+                /Loop/{thermo=0}
+                      {if(thermo==1) print ('$N_data'*(NR-line1))+'$timestep' substr($0, index($0, " "$2))}
+                /Step/{thermo=1; line1=NR+1}
+                ' logs/tmp/log.lammps.$i | tail --lines=+2 >>logs/log.lammps.$i
+            ) &
         done
     fi
 
