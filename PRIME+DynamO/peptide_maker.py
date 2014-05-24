@@ -1,4 +1,4 @@
-#!/usr/bin/python2.6
+#!/usr/bin/python
 
 from lxml import etree as ET
 import sys
@@ -145,10 +145,11 @@ lmp.command( "fix NVT all nvt temp 300 0.1 100.0" )
 
 atom_tally = 0
 
+lmp_coords = np.zeros([0,3])
+
 for i_res, res in enumerate(sequence):
     natoms = lmp.get_natoms()
 
-    lmp_coords = np.array(lmp.gather_atoms( "x", 1, 3))
     lmp_coords = np.reshape(lmp_coords, [natoms, 3])
     new_coords = mylammps.create_coords(lmp_coords, i_res, res)
 
@@ -227,6 +228,8 @@ for i_res, res in enumerate(sequence):
     lmp.minimize()
 
     lmp.unfixes(bond_fix_names+force_fix_names)
+
+    lmp_coords = np.array(lmp.gather_atoms( "x", 1, 3))
 
 natoms = lmp.get_natoms()
 
