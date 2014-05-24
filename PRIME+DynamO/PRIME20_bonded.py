@@ -47,4 +47,19 @@ for SC in list('ACDEFHIKLMNPQRSTVWY'):
     BB_pseudo[SC + ' NH'] = str(2.44*(float(BB_SC_diam['CH ' + SC])/1.531))
     BB_pseudo[SC + ' CO'] = str(2.49*(float(BB_SC_diam['CH ' + SC])/1.531))
 
+#For printing out LAMMPS parameters:
+#def plus1(i):
+    #while True:
+        #i+=1
+        #yield i
+
+#go=plus1(7)
+
+#for SC in list('ACDEFHIKLMNPQRSTVWY'):
+    #for BB in ['NH','CH','CO']:
+        #try:
+            #len=BB_pseudo[BB+' '+SC]
+        #except:
+            #len=BB_SC_diam[BB+' '+SC]
+        #print "bond_coeff   {3:2}   90.0         {0:.4}   #{1}-{2}".format(len,SC,BB, go.next())
 

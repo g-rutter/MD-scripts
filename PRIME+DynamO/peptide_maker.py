@@ -1,13 +1,15 @@
 #!/usr/bin/python2.6
 
 from lxml import etree as ET
-from geosolver.geometric import GeometricProblem, GeometricSolver, DistanceConstraint, FixConstraint
-from geosolver.vector import vector
 import sys
 import os
 import time
 import math
 import random
+import numpy as np
+
+from mylammps import mylammpsclass
+import mylammps
 
 import PRIME20_unbonded
 import PRIME20_bonded
@@ -16,15 +18,15 @@ import PRIME20_masses
 def gauss():
     return str( random.gauss(0.0, 1.0) )
 
-def getInteraction(ID1, ID2, expanded_sequence, bb_sites):
+def getInteraction(ID1, ID2, expanded_sequence, n_bb_sites):
     """Checks if ID1 and ID2 are bonded or not, and assigns them an interaction from the correct dict of interactions."""
     pair1 = expanded_sequence[ID2] + ' ' + expanded_sequence[ID1]
     pair2 = expanded_sequence[ID1] + ' ' + expanded_sequence[ID2]
 
     #ID1 is always side-chain. ID1CH is the CH it's connected to.
-    ID1CH = 3*( ID1 - bb_sites) + 1
+    ID1CH = 3*( ID1 - n_bb_sites) + 1
 
-    if ID2 < bb_sites:
+    if ID2 < n_bb_sites:
         #ID2 is bb site
 
         if ID2 == ID1CH - 1: #SC pseudobonded to NH
@@ -48,6 +50,9 @@ def getInteraction(ID1, ID2, expanded_sequence, bb_sites):
         return unbondint[pair2]
     except KeyError:
         return unbondint[pair1]
+
+def joinstr(string, list_like):
+    return string.join(str(item) for item in list_like)
 
 #############################################
 ###       Define interaction dicts        ###
@@ -107,10 +112,10 @@ date                         = time.strftime('%X %x %Z')
 box_size                     = len(sequence)*10.0
 mid_box                      = box_size*0.5
 box_pad                      = float(pseudobond_diam['CH CH'])
-res_count                    = len(sequence)
-bb_sites                     = 3*res_count
-sc_sites                     = res_count - sequence.count('G')
-expanded_sequence            = ['NH','CH','CO']*res_count + sequence #List of sites including G sites which dont really exist
+n_residues                    = len(sequence)
+n_bb_sites                     = 3*n_residues
+n_sc_sites                     = n_residues - sequence.count('G')
+expanded_sequence            = ['NH','CH','CO']*n_residues + sequence #List of sites including G sites which dont really exist
 nonglycine_expanded_sequence = filter(lambda a: a != 'G', expanded_sequence) #'Real' list, e.g. AGA gives NH,CH,CO,NH,CH,CO,NH,CH,CO,A,A
 gap                          = 0.9
 
@@ -121,81 +126,138 @@ print 'File name:' , filename , '\n'
 ###      Geometry of one amino acid       ###
 #############################################
 
-problem = GeometricProblem(dimension=3)
-solver = GeometricSolver(problem)
+lmp = mylammpsclass()
 
-#Add backbone atoms as points in problem. Points are given a prototype location.
-for i, res in enumerate (sequence):
-    istr = str(i)
-    displace = float(pseudobond_diam['CH CH'])*i
+lmp.command( "units real" )
+lmp.command( "dimension 3" )
+lmp.command( "boundary m m m" )
+lmp.command( "atom_style molecular" )
+lmp.command( "atom_modify sort 0 0" )
 
-    problem.add_point("NH"+istr, vector([0 + displace, mid_box          , mid_box ]))
-    problem.add_point("CH"+istr, vector([1 + displace, mid_box + (-1)**i, mid_box ]))
-    problem.add_point("CO"+istr, vector([2 + displace, mid_box          , mid_box ]))
+lmp.command( "read_data box.lmp" )
+lmp.file("LAMMPS_PRIME20.params")
 
-    #problem.add_point("SC"+istr, vector([1 + displace, mid_box, mid_box + gap]) )
+lmp.command( "pair_style lj/cut 10.0" )
+lmp.command( "pair_coeff * * 0.0 10.0" )
+lmp.command( "special_bonds lj 0 1 1" )
 
-for i, res in enumerate (sequence):
-    istr = str(i)
-    displace = float(pseudobond_diam['CH CH'])*i
+lmp.command( "fix NVT all nvt temp 300 0.1 100.0" )
 
-    #Bonds
-    problem.add_constraint(DistanceConstraint("NH"+istr,"CH"+istr, float(bond_diam['NH CH']))) #NH-CH bond
-    problem.add_constraint(DistanceConstraint("CH"+istr,"CO"+istr, float(bond_diam['CH CO']))) #CH-CO bond
-    #problem.add_constraint(DistanceConstraint("SC"+istr,"CH"+istr, float(bond_diam['CH ' + res]))) #SC-CH bond
+atom_tally = 0
 
-    #Pseudos
-    #problem.add_constraint(DistanceConstraint("SC"+istr,"NH"+istr, float(pseudobond_diam['NH ' + res]))) #SC-NH pseudo
-    #problem.add_constraint(DistanceConstraint("SC"+istr,"CO"+istr, float(pseudobond_diam['CO ' + res]))) #SC-CO pseudo
-    problem.add_constraint(DistanceConstraint("NH"+istr,"CO"+istr, float(pseudobond_diam['NH CO']))) #NH-CO pseudo
+for i_res, res in enumerate(sequence):
+    natoms = lmp.get_natoms()
 
-#Inter-residue contraints
-for i, res in enumerate (sequence):
-    if i == 0:
-        continue
-    im1  = str(i-1)
-    istr = str(i)
+    lmp_coords = np.array(lmp.gather_atoms( "x", 1, 3))
+    lmp_coords = np.reshape(lmp_coords, [natoms, 3])
+    new_coords = mylammps.create_coords(lmp_coords, i_res, res)
 
-    problem.add_constraint(DistanceConstraint("CO"+im1,"NH"+istr, float(bond_diam['CO NH']))) #CO-NH bond
-    #problem.add_constraint(DistanceConstraint("CH"+im1,"CH"+istr, float(pseudobond_diam['CH CH']))) #CH-CH pseudo
-    problem.add_constraint(DistanceConstraint("CH"+im1,"NH"+istr, float(pseudobond_diam['CH NH']))) #CH-NH pseudo
-    problem.add_constraint(DistanceConstraint("CO"+im1,"CH"+istr, float(pseudobond_diam['CO CH']))) #CO-CH pseudo
+    #Add next residue
+    residue_atoms = [ 'NH', 'CH', 'CO']
+    if res != 'G':
+        residue_atoms += res
 
-    print "CO"+im1,"NH"+istr
-    print "CH"+im1,"CH"+istr
-    print "CH"+im1,"NH"+istr
-    print "CO"+im1,"CH"+istr
+    #Check atoms have been added correctly
+    if atom_tally != natoms:
+        print "ERROR: Internal atom tally doesn't match LAMMPS' natoms."
+        print "Atom tally:", atom_tally
+        print "LAMMPS natoms:", natoms
+        exit()
 
-#Solve it!
-result = solver.get_result()
-print "Number of solutions", len(result.solutions)
-print result.__str__()
-#print "subs", result.subs
+    atom_tally += len(residue_atoms)
 
-if result.flag.count('under-constrained'):
-    print result.flag
-print result.solutions[0]
-exit()
+    #Create atoms for next residue
+    for i_atom, atom in enumerate(residue_atoms):
+        coordstr = joinstr(" ", new_coords[natoms+i_atom])
+        typestr  = str( nonglycine_sites.index(atom) + 1 )
+        create_cmd = "create_atoms " + typestr + " single " + coordstr
+        lmp.command( create_cmd )
+
+    #Create groups to use for bond/create and addforce fixes
+    mylammps.create_groups(lmp, natoms, residue_atoms, sequence, i_res)
+
+    bondcmds = []
+
+    #BB-BB bonds
+    #                      ID     group  bond/create Nevery itype jtype Rmin bondtype
+    bondcmds.append( "fix  NH_CH  last1  bond/create 1      20     21   10.0 1" )
+    bondcmds.append( "fix  CH_CO  last1  bond/create 1      21     22   10.0 2" )
+    bondcmds.append( "fix  CO_NH  CO_NH  bond/create 1      22     20   10.0 3" )
+
+    #BB-BB pseudobonds
+    #                      ID     group  bond/create Nevery itype jtype Rmin bondtype
+    bondcmds.append( "fix  NH_CO  last1  bond/create 1      20    22    10.0 4" )
+    bondcmds.append( "fix  CH_NH  CH_NH  bond/create 1      21    20    10.0 5" )
+    bondcmds.append( "fix  CO_CH  CO_CH  bond/create 1      22    21    10.0 6" )
+    bondcmds.append( "fix  CH_CH  last2  bond/create 1      21    21    10.0 7" )
+
+    bond_fix_names = [ "NH_CH", "CH_CO", "CO_NH", "NH_CO", "CH_NH", "CO_CH", "CH_CH" ]
+
+    #BB-SC bonds and pseudobonds
+    if res != 'G':
+        sc_type = nonglycine_sites.index(res) + 1
+        NH_SC_type = 5 + sc_type*3
+        CH_SC_type = 6 + sc_type*3
+        CO_SC_type = 7 + sc_type*3
+        #                      ID     group  bond/create Nevery itype   jtype           Rmin     bondtype
+        bondcmds.append( "fix  NH_SC  last1  bond/create 1      20    "+str(sc_type)+"  10.0 " + str(NH_SC_type))
+        bondcmds.append( "fix  CH_SC  last1  bond/create 1      21    "+str(sc_type)+"  10.0 " + str(CH_SC_type))
+        bondcmds.append( "fix  CO_SC  last1  bond/create 1      22    "+str(sc_type)+"  10.0 " + str(CO_SC_type))
+
+        bond_fix_names += ["NH_SC", "CH_SC", "CO_SC"]
+
+    #Add force
+    forcecmds = []
+
+    pullstrength = 100.0*i_res
+    forcecmds.append( "fix  negativepull  firstbbatom addforce -{0:f} 0.0 0.0". format(pullstrength) )
+    forcecmds.append( "fix  positivepull  lastbbatom  addforce  {0:f} 0.0 0.0". format(pullstrength) )
+    force_fix_names = ["negativepull", "positivepull"]
+
+    lmp.commands(bondcmds+forcecmds)
+
+    lmp.command( "dump dcd all dcd 20 " + str(i_res) + "test.dcd" )
+
+    #Run
+    lmp.command( "run 1" )
+    lmp.minimize()
+
+    lmp.command( "run 2000" ) 
+    lmp.command( "undump dcd" )
+    lmp.minimize()
+
+    lmp.unfixes(bond_fix_names+force_fix_names)
+
+natoms = lmp.get_natoms()
+
+lmp_coords = np.array(lmp.gather_atoms( "x", 1, 3))
+lmp_coords = np.reshape(lmp_coords, [natoms, 3])
+
+lmp.close()
 
 #############################################
 ###          Obtain all positions         ###
 #############################################
 
-bb_positions = {}
-sc_positions = {}
+#This prog mainly puts all the SC sites at the end, while the LAMMPS portion
+#includes them at the end of each residue, so some translation is required.
 
-for i, res in enumerate( sequence ):
-    istr = str(i)
+i_sc = i_lammps_atom = 0
 
-    #Copy prototype positions.
-    bb_positions[i*3]     = list( result.solutions[0]["NH"+istr] )
-    bb_positions[i*3 + 1] = list( result.solutions[0]["CH"+istr] )
-    bb_positions[i*3 + 2] = list( result.solutions[0]["CO"+istr] )
+bb_positions = np.zeros([n_bb_sites, 3])
+sc_positions = np.zeros([n_residues, 3]) #sparsely populated
 
-    if sequence[i] != 'G':
-        # Add sidechain
-        sc_positions[i] = list( result.solutions[0]["SC"+istr] )
-        #Add appropriate amount to sidechain x values
+for i_res, res in enumerate( sequence ):
+    #Add next residue
+    residue_atoms = [ 'NH', 'CH', 'CO']
+
+    for i_atom in [0,1,2]:
+        bb_positions[i_res*3 + i_atom] = lmp_coords[i_lammps_atom]
+        i_lammps_atom += 1
+
+    if res != 'G':
+        sc_positions[i_res] = lmp_coords[i_lammps_atom]
+        i_lammps_atom += 1
 
 #############################################
 ###             Set up classes            ###
@@ -224,9 +286,9 @@ ParticleData = ET.SubElement ( DynamOconfig, 'ParticleData' )
 
 ####ParticleData section####
 
-[ ET.SubElement( ParticleData, 'Pt', attrib = {'ID' : str(ID) } ) for ID in range( bb_sites + sc_sites ) ]
+[ ET.SubElement( ParticleData, 'Pt', attrib = {'ID' : str(ID) } ) for ID in range( n_bb_sites + n_sc_sites ) ]
 #Give positions and momenta to the backbone sites:
-for i in range( bb_sites ):
+for i in range( n_bb_sites ):
     ET.SubElement( ParticleData[i], 'P', attrib = {"x":str( bb_positions[i][0] ), "y":str( bb_positions[i][1] ), "z":str( bb_positions[i][2] )} )
     ET.SubElement( ParticleData[i], 'V', attrib = {"x":gauss(), "y":gauss(), "z":gauss()} )
 
@@ -234,8 +296,8 @@ for i in range( bb_sites ):
 j=0
 for i in range( len(sequence) ):
     if sequence[i] != 'G':
-        ET.SubElement( ParticleData[j + bb_sites], 'P', attrib = {"x":str( sc_positions[i][0] ), "y":str( sc_positions[i][1] ), "z":str( sc_positions[i][2] )} )
-        ET.SubElement( ParticleData[j + bb_sites], 'V', attrib = {"x":gauss(), "y":gauss(), "z":gauss()} )
+        ET.SubElement( ParticleData[j + n_bb_sites], 'P', attrib = {"x":str( sc_positions[i][0] ), "y":str( sc_positions[i][1] ), "z":str( sc_positions[i][2] )} )
+        ET.SubElement( ParticleData[j + n_bb_sites], 'V', attrib = {"x":gauss(), "y":gauss(), "z":gauss()} )
         j += 1
 
 ####Simulation section####
@@ -366,12 +428,12 @@ for n in range( len( nonglycine_sites ) ):
 #        Add each pair of species to its relevant interaction         #
 #######################################################################
 
-ET.SubElement( Interactions, 'Interaction', attrib = {'Type':'PRIME_BB', 'Name':'Backbone', 'Start':'0', 'End':str(bb_sites-1) } )
+ET.SubElement( Interactions, 'Interaction', attrib = {'Type':'PRIME_BB', 'Name':'Backbone', 'Start':'0', 'End':str(n_bb_sites-1) } )
 
 #Iterate over every SC-SC and SC-BB pair of sites. ID1 will only be SCs.
 #ID1 and ID2 include glycine as if its a real site, so IDx_flat corrects this.
 
-for ID1 in range( bb_sites, len(expanded_sequence) ):
+for ID1 in range( n_bb_sites, len(expanded_sequence) ):
 
     if expanded_sequence[ID1] == 'G':
         continue
@@ -386,7 +448,7 @@ for ID1 in range( bb_sites, len(expanded_sequence) ):
         ID2_flat= ID2 - expanded_sequence[:ID2].count('G')
 
         #getInteraction assumes no glycine, i.e. the last SC atom will have same id in GA as in AA.
-        ThisInteraction = getInteraction(ID1, ID2, expanded_sequence, bb_sites)
+        ThisInteraction = getInteraction(ID1, ID2, expanded_sequence, n_bb_sites)
         #For debug:
         #print ("Assigning pair", ID1, expanded_sequence[ID1], ID2, expanded_sequence[ID2], "as", ThisInteraction.attrib['Name'])
 
@@ -417,6 +479,6 @@ input_file.write('<!-- Created on ' +date + '. -->\n')
 input_file.close()
 
 #Add thermostat and rescale via dynamod:
-thermostat_command = 'dynamod -T ' + temperature + ' -r ' + temperature + ' -o ' + filename + ' -Z ' + filename
+thermostat_command = 'dynamod -T ' + temperature + ' -r ' + temperature + ' -o ' + filename + ' -Z ' + filename + " --round"
 print "Running this command:", thermostat_command
 os.system(thermostat_command)
