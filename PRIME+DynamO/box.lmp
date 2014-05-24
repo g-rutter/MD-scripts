@@ -1,0 +1,19 @@
+ALANINE PRIME20 for LAMMPS
+
+     0 atoms
+     0 bonds
+     0 angles
+     0 dihedrals
+
+     5 extra bond per atom
+   999 extra special per atom
+
+    22 atom types
+    64 bond types
+     0 angle types
+     0 dihedral types
+
+ -40.0 1000.0 xlo xhi
+ -40.0   40.0 ylo yhi
+ -40.0   40.0 zlo zhi
+
