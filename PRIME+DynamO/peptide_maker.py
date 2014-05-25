@@ -2,11 +2,10 @@
 
 from lxml import etree as ET
 import sys
-import os
 import time
-import math
 import random
 import numpy as np
+import subprocess
 
 from mylammps import mylammpsclass
 import mylammps
@@ -14,6 +13,9 @@ import mylammps
 import PRIME20_unbonded
 import PRIME20_bonded
 import PRIME20_masses
+
+#Turn on for full output from LAMMPS and DynamO
+debug = False
 
 def gauss():
     return str( random.gauss(0.0, 1.0) )
@@ -126,7 +128,10 @@ print 'File name:' , filename , '\n'
 ###      Geometry of one amino acid       ###
 #############################################
 
-lmp = mylammpsclass()
+if debug:
+    lmp = mylammpsclass()
+else:
+    lmp = mylammpsclass("", ["-screen", "none"])
 
 lmp.command( "units real" )
 lmp.command( "dimension 3" )
@@ -452,8 +457,8 @@ for ID1 in range( n_bb_sites, len(expanded_sequence) ):
 
         #getInteraction assumes no glycine, i.e. the last SC atom will have same id in GA as in AA.
         ThisInteraction = getInteraction(ID1, ID2, expanded_sequence, n_bb_sites)
-        #For debug:
-        #print ("Assigning pair", ID1, expanded_sequence[ID1], ID2, expanded_sequence[ID2], "as", ThisInteraction.attrib['Name'])
+        if debug:
+            print "Assigning pair", ID1, expanded_sequence[ID1], ID2, expanded_sequence[ID2], "as", ThisInteraction.attrib['Name']
 
         try:
             ET.SubElement(ThisInteraction[0], 'IDPair', attrib = {'ID1':str(ID1_flat), 'ID2':str(ID2_flat)})
@@ -482,6 +487,17 @@ input_file.write('<!-- Created on ' +date + '. -->\n')
 input_file.close()
 
 #Add thermostat and rescale via dynamod:
-thermostat_command = 'dynamod -T ' + temperature + ' -r ' + temperature + ' -o ' + filename + ' -Z ' + filename + " --round"
-print "Running this command:", thermostat_command
-os.system(thermostat_command)
+thermostat_command = [ 'dynamod',  '-T', temperature, '-r', temperature, '-o', filename, '-Z', filename, "--round" ]
+print "Running this command:", " ".join(thermostat_command)
+if debug:
+    subprocess.check_output(thermostat_command)
+else:
+    silent_stdout = subprocess.check_output(thermostat_command)
+
+#Check config is valid with dynarun:
+run_command = ['dynarun', '-c', '1', filename]
+print "Running this command:", " ".join(run_command)
+if debug:
+    subprocess.check_output(run_command)
+else:
+    silent_stdout = subprocess.check_output(run_command)
