@@ -76,35 +76,34 @@ def create_groups(lmp, natoms, residue_atoms, sequence, i_res):
     lmp.freshgroup( "firstbbatom", "id "+str(firstbbatom) )
     lmp.freshgroup( "lastbbatom",  "id "+str(lastbbatom)  )
 
+def create_coords(coords, i_res, seq, res_space, prototype_positions):
 
-def create_coords(coords, i_res, res):
+    res = seq[i_res]
+    if res == 'G':
+        new_atoms = 3
+    else:
+        new_atoms = 4
 
     if i_res == 0:
-        if res == 'G':
-            new_coords = np.array([ (-1.100,  -1.000,  -1.000),
-                                    ( 0.100,   0.100,   0.010),
-                                    ( 1.400,   1.100,   1.000) ])
-        else:
-            new_coords = np.array([ (-1.100,  -1.000,  -1.000),
-                                    ( 0.100,   0.100,   0.010),
-                                    ( 1.400,   1.100,   1.000),
-                                    ( 0.200,   0.500,  -0.500) ])
+        new_coords = prototype_positions[:new_atoms]
+
     else:
-
-        if res == 'G':
-            n_new_atoms = 3
+        prev_res = seq[i_res-1]
+        if prev_res == 'G':
+            last_new_atoms = 3
         else:
-            n_new_atoms = 4
+            last_new_atoms = 4
 
-        new_size = coords.shape + np.array([n_new_atoms,0])
+        i_last_NH = len(coords) - last_new_atoms
+
+        #Place new NH at coords[i_last_NH]+res_space, place other atoms accordingly
+        new_NH_pos = coords[i_last_NH] + [ res_space, 0.0, 0.0 ]
+        shift = new_NH_pos - prototype_positions[0]
+
+        new_size = coords.shape + np.array([new_atoms,0])
         new_coords = np.array(coords)
         new_coords.resize(new_size)
-
-        #just add some distance and copy. note may not even copy same atoms.
-        for i_atom in range(len(coords), len(new_coords)):
-            for i in [0,1,2]:
-                rand = (random.random()*0.5)-0.25
-                new_coords[i_atom][i] = coords[-1][i] + rand
+        new_coords[-new_atoms:] = prototype_positions[-new_atoms:] + shift
 
     return new_coords
 

@@ -1,12 +1,12 @@
-#!/usr/bin/python2.6
+#!/usr/bin/python2.7
 
 from lxml import etree as ET
 import sys
 import os
 import time
-import math
 import random
 import numpy as np
+import subprocess
 
 from mylammps import mylammpsclass
 import mylammps
@@ -14,6 +14,9 @@ import mylammps
 import PRIME20_unbonded
 import PRIME20_bonded
 import PRIME20_masses
+
+#Turn on for full output from LAMMPS and DynamO
+debug = False
 
 def gauss():
     return str( random.gauss(0.0, 1.0) )
@@ -51,34 +54,62 @@ def getInteraction(ID1, ID2, expanded_sequence, n_bb_sites):
     except KeyError:
         return unbondint[pair1]
 
-def joinstr(string, list_like):
+def joinStr(string, list_like):
     return string.join(str(item) for item in list_like)
+
+def getLambdaDict(well_diam, diam):
+    return { k : str( float(well_diam[k]) / float(diam[k]) ) for k in well_diam.keys() }
+
+def comboDict(dicts = []):
+    new_dict = {}
+    for d in dicts:
+        new_dict = dict( new_dict.items() + d.items() )
+
+    return new_dict
 
 #############################################
 ###       Define interaction dicts        ###
 #############################################
 
-#Define a dict of bonded and unbonded interactions, given as a pointer to the lxml SubElement variable.
-unbondint      = {}
+attribset              = {'Elasticity':'1'}
+
+#Dicts imported by category
+SC_SC_diam      = dict(PRIME20_unbonded.SC_SC_diam)
+SC_SC_well_diam = dict(PRIME20_unbonded.SC_SC_well_diam)
+SC_SC_lambda    = getLambdaDict(SC_SC_well_diam, SC_SC_diam)
+SC_SC_welldepth = dict(PRIME20_unbonded.SC_SC_well_depth)
+
+BB_SC_unbond_diam      = dict(PRIME20_unbonded.BB_SC_diam)
+BB_SC_unbond_well_diam = dict(PRIME20_unbonded.BB_SC_well_diam)
+BB_SC_unbond_lambda    = getLambdaDict(BB_SC_unbond_well_diam, BB_SC_unbond_diam)
+BB_SC_welldepth        = dict(PRIME20_unbonded.BB_SC_well_depth)
+
+BB_SC_bond_diam      = dict(PRIME20_bonded.BB_SC_diam)
+BB_SC_bond_well_diam = dict(PRIME20_bonded.BB_SC_well_diam)
+BB_SC_bond_lambda    = getLambdaDict(BB_SC_bond_well_diam, BB_SC_bond_diam)
+
+BB_SC_pseudo_diam      = dict(PRIME20_bonded.BB_SC_pseudo_diam)
+BB_SC_pseudo_well_diam = dict(PRIME20_bonded.BB_SC_pseudo_well_diam)
+BB_SC_pseudo_lambda    = getLambdaDict(BB_SC_pseudo_well_diam, BB_SC_pseudo_diam)
+
+#Combined dicts
+unbond_diam       = comboDict( [SC_SC_diam, BB_SC_unbond_diam] )
+unbond_lambda     = comboDict( [SC_SC_lambda, BB_SC_unbond_lambda] )
+unbond_welldiam   = comboDict( [SC_SC_well_diam, BB_SC_unbond_well_diam] )
+welldepth         = comboDict( [SC_SC_welldepth, BB_SC_welldepth] )
+
+#Close (i.e. bonded via neighs) interactions
+close_diam   = dict(PRIME20_unbonded.close_diam)
+close_lambda = getLambdaDict(unbond_welldiam, unbond_diam)
+
+#pseudobond_lambda      = '1.0450' #}http://www.sciencedirect.com/science/article/pii/S0022283611013672 Materials and Methods
+#bond_lambda            = '1.0450' #}
+
+#Interactions will end up written as XML entries to these dicts
+unbondint = {}
 closeunbondint = {}
-bondint        = {}
-pseudobondint  = {}
-
-attribset         = {'Elasticity':'1'}
-unbond_diam       = dict(PRIME20_unbonded.SC_SC_diam)
-unbond_welldepth  = dict(PRIME20_unbonded.SC_SC_well_depth)
-unbond_welldiam   = dict(PRIME20_unbonded.SC_SC_well_diam)
-bond_diam         = dict(PRIME20_bonded.BB_BB_diam)
-pseudobond_diam   = dict(PRIME20_bonded.BB_pseudo)
-pseudobond_lambda = '1.0450' #}http://www.sciencedirect.com/science/article/pii/S0022283611013672 Materials and Methods
-bond_lambda       = '1.0450' #}
-close_unbond_diam = dict(PRIME20_unbonded.close_diam)
-
-unbond_diam.update(PRIME20_unbonded.BB_SC_diam)
-unbond_diam.update(PRIME20_unbonded.BB_BB_diam)
-bond_diam.update(PRIME20_bonded.BB_SC_diam)
-unbond_welldepth.update(PRIME20_unbonded.BB_SC_well_depth)
-unbond_welldiam.update(PRIME20_unbonded.BB_SC_well_diam)
+pseudobondint = {}
+bondint = {}
 
 #############################################
 ###  Read in the command line parameters  ###
@@ -92,7 +123,11 @@ nonglycine_names = ['Alanine', 'Cysteine', 'Aspartic Acid', 'Glutamic Acid', 'Ph
 try:
     filename = str(sys.argv[3])
 except:
-    filename = 'Hall_peptide.xml'
+    filename = 'Hall_peptide'
+
+psf_fn = filename + '.psf'
+xml_fn = filename + '.xml'
+
 try:
     temperature = sys.argv[2]
 except:
@@ -106,27 +141,36 @@ try:
         sequence = list(sys.argv[1])
         assert [ sites.index(residue) for residue in sequence]
 except:
-    sys.exit('Run as ./peptide_maker.py (sequence) [temperature kT = 1.0] [filename = Hall_peptide].')
+    sys.exit('Run as ./peptide_maker.py (sequence) [temperature kT = 1.0] [xml_fn = Hall_peptide].')
 
-date                         = time.strftime('%X %x %Z')
-box_size                     = len(sequence)*10.0
-mid_box                      = box_size*0.5
-box_pad                      = float(pseudobond_diam['CH CH'])
-n_residues                    = len(sequence)
-n_bb_sites                     = 3*n_residues
-n_sc_sites                     = n_residues - sequence.count('G')
-expanded_sequence            = ['NH','CH','CO']*n_residues + sequence #List of sites including G sites which dont really exist
+date               = time.strftime('%X %x %Z')
+box_size_per_res   = 10.0
+box_pad            = 5.0
+box_size           = box_pad + len(sequence)*10.0
+n_residues         = len(sequence)
+n_bb_sites         = 3*n_residues
+n_sc_sites         = n_residues - sequence.count('G')
+expanded_sequence  = ['NH','CH','CO']*n_residues + sequence #List of sites including G sites which dont really exist
 nonglycine_expanded_sequence = filter(lambda a: a != 'G', expanded_sequence) #'Real' list, e.g. AGA gives NH,CH,CO,NH,CH,CO,NH,CH,CO,A,A
 gap                          = 0.9
 
 print 'Sequence:' , ''.join(sequence)
-print 'File name:' , filename , '\n'
+print 'File name:' , xml_fn , '\n'
 
 #############################################
 ###      Geometry of one amino acid       ###
 #############################################
 
-lmp = mylammpsclass()
+res_space = 3.6
+prototype_positions = np.array([ [ 0.   ,  0.   ,  0.   ],
+                                 [ 1.364,  0.121,  0.504],
+                                 [ 2.366,  0.120, -0.624],
+                                 [ 1.28 ,  2.   , -1.   ] ])
+
+if debug:
+    lmp = mylammpsclass()
+else:
+    lmp = mylammpsclass("", ["-screen", "none"])
 
 lmp.command( "units real" )
 lmp.command( "dimension 3" )
@@ -137,20 +181,29 @@ lmp.command( "atom_modify sort 0 0" )
 lmp.command( "read_data box.lmp" )
 lmp.file("LAMMPS_PRIME20.params")
 
-lmp.command( "pair_style lj/cut 10.0" )
-lmp.command( "pair_coeff * * 0.0 10.0" )
+lj_sigma = 3.0
+lj_distance_cutoff = ( 2.0**(1.0/6) ) * lj_sigma
+
+lmp.command( "pair_style table linear 2" )
+lmp.command( "pair_coeff * * LAMMPS_repulsive_pair_table.txt repulsive_linear" )
+
+#lmp.command( "pair_style lj/cut 10.0" )
+#lmp.command( "pair_coeff * * 0.0000 " + str(lj_sigma) )
+#lmp.command( "pair_modify shift yes" )
+
 lmp.command( "special_bonds lj 0 1 1" )
 
 lmp.command( "fix NVT all nvt temp 300 0.1 100.0" )
 
 atom_tally = 0
 
+lmp_coords = np.zeros([0,3])
+
 for i_res, res in enumerate(sequence):
     natoms = lmp.get_natoms()
 
-    lmp_coords = np.array(lmp.gather_atoms( "x", 1, 3))
     lmp_coords = np.reshape(lmp_coords, [natoms, 3])
-    new_coords = mylammps.create_coords(lmp_coords, i_res, res)
+    new_coords = mylammps.create_coords(lmp_coords, i_res, sequence, res_space, prototype_positions)
 
     #Add next residue
     residue_atoms = [ 'NH', 'CH', 'CO']
@@ -168,7 +221,7 @@ for i_res, res in enumerate(sequence):
 
     #Create atoms for next residue
     for i_atom, atom in enumerate(residue_atoms):
-        coordstr = joinstr(" ", new_coords[natoms+i_atom])
+        coordstr = joinStr(" ", new_coords[natoms+i_atom])
         typestr  = str( nonglycine_sites.index(atom) + 1 )
         create_cmd = "create_atoms " + typestr + " single " + coordstr
         lmp.command( create_cmd )
@@ -209,7 +262,7 @@ for i_res, res in enumerate(sequence):
     #Add force
     forcecmds = []
 
-    pullstrength = 100.0*i_res
+    pullstrength = 10.0*i_res
     forcecmds.append( "fix  negativepull  firstbbatom addforce -{0:f} 0.0 0.0". format(pullstrength) )
     forcecmds.append( "fix  positivepull  lastbbatom  addforce  {0:f} 0.0 0.0". format(pullstrength) )
     force_fix_names = ["negativepull", "positivepull"]
@@ -223,14 +276,22 @@ for i_res, res in enumerate(sequence):
     lmp.minimize()
 
     lmp.command( "run 2000" ) 
-    lmp.command( "undump dcd" )
     lmp.minimize()
 
     lmp.unfixes(bond_fix_names+force_fix_names)
 
+    lmp.command( "run 2000" ) 
+    lmp.minimize()
+
+    lmp.command( "undump dcd" )
+    lmp_coords = np.array(list( lmp.gather_atoms("x", 1,3) ))
+
+lmp.command( "run 20000" ) 
+lmp.minimize()
+
 natoms = lmp.get_natoms()
 
-lmp_coords = np.array(lmp.gather_atoms( "x", 1, 3))
+lmp_coords = np.array(list(lmp.gather_atoms( "x", 1, 3)))
 lmp_coords = np.reshape(lmp_coords, [natoms, 3])
 
 lmp.close()
@@ -285,8 +346,8 @@ Properties   = ET.SubElement ( DynamOconfig, 'Properties' )
 ParticleData = ET.SubElement ( DynamOconfig, 'ParticleData' )
 
 ####ParticleData section####
-
-[ ET.SubElement( ParticleData, 'Pt', attrib = {'ID' : str(ID) } ) for ID in range( n_bb_sites + n_sc_sites ) ]
+for ID in range( n_bb_sites + n_sc_sites ):
+    ET.SubElement( ParticleData, 'Pt', attrib = {'ID' : str(ID) } )
 #Give positions and momenta to the backbone sites:
 for i in range( n_bb_sites ):
     ET.SubElement( ParticleData[i], 'P', attrib = {"x":str( bb_positions[i][0] ), "y":str( bb_positions[i][1] ), "z":str( bb_positions[i][2] )} )
@@ -331,30 +392,22 @@ for species in AAs:
         #Add its IDs
         [ ET.SubElement( temp, 'ID', attrib = { 'val' : str(i).replace("[","").replace("]","") } ) for i in species.ID ]
 
-temp = ET.SubElement( Globals, 'Global', attrib = {'Type':'Cells','Name':'SchedulerNBList','NeighbourhoodRange':'5.000000000000e+00'})
+temp = ET.SubElement( Globals, 'Global', attrib = {'Type':'Cells','Name':'SchedulerNBList','NeighbourhoodRange':'7.400000000000e+00'})
 ET.SubElement( temp, 'IDRange', attrib = {'Type':'All'})
 
 #######################################################################
 #               Create interaction types in XML format                #
 #######################################################################
 
+#iterate over all pairs of site types and write all their interactions
 for n in range( len( nonglycine_sites ) ):
     site_type = nonglycine_sites[n]
-
-    try: #Don't bother writing interactions for site types that don't exist.
-        expanded_sequence.index(site_type)
-    except ValueError:
-        continue
 
     for m in range( n+1 ):
         site_type2 = nonglycine_sites[m]
 
-        if ['NH','CO','CH'].count(site_type2): #Backbone-backbone interactions are handled by PRIME_BB interaction.
-            continue
-
-        try: #Don't bother writing interactions for site types that don't exist.
-            expanded_sequence.index(site_type2)
-        except ValueError:
+        #Backbone-backbone interactions are handled by PRIME_BB interaction:
+        if ['NH','CO','CH'].count(site_type2): 
             continue
 
         try:
@@ -366,11 +419,15 @@ for n in range( len( nonglycine_sites ) ):
         pair             = site_type + ' ' + site_type2
         interaction_list = [] #At end of each inner loop, will be used to print which inters are defined for the pair.
 
+        #################################
+        #  Define unbonded interaction  #
+        #################################
+
         attribset['Name']      = 'Unbond ' + pair
         attribset['Diameter']  = unbond_diam[pair]
         try:
-            attribset['Lambda']    = str ( float( unbond_welldiam[pair] ) / float( unbond_diam[pair] ) )
-            attribset['WellDepth'] = unbond_welldepth[pair]
+            attribset['Lambda']    = unbond_lambda[pair]
+            attribset['WellDepth'] = welldepth[pair]
             attribset['Type']      = 'SquareWell'
             unbondint[pair]        = ET.Element ( 'Interaction', attrib = attribset )
             interaction_list.append('SquareWell')
@@ -379,17 +436,17 @@ for n in range( len( nonglycine_sites ) ):
             unbondint[pair]   = ET.Element ( 'Interaction', attrib = attribset )
             interaction_list.append('HardSphere')
 
-        try:
-            del attribset['Lambda']
-            del attribset['WellDepth']
-        except KeyError:
-            pass
+        attribset = {'Elasticity':'1'}
+
+        #######################################
+        #  Define unbonded close interaction  #
+        #######################################
 
         attribset['Name']     = 'Unbond close ' + pair
-        attribset['Diameter'] = close_unbond_diam[pair]
+        attribset['Diameter'] = close_diam[pair]
         try:
-            attribset['Lambda']    = str ( float( unbond_welldiam[pair] )/float( close_unbond_diam[pair] ) )
-            attribset['WellDepth'] = unbond_welldepth[pair]
+            attribset['Lambda']    = close_lambda[pair]
+            attribset['WellDepth'] = welldepth[pair]
             attribset['Type']      = 'SquareWell'
             closeunbondint[pair]   = ET.Element ( 'Interaction', attrib = attribset )
             interaction_list.append('SquareWell Close')
@@ -398,27 +455,31 @@ for n in range( len( nonglycine_sites ) ):
             closeunbondint[pair] = ET.Element ( 'Interaction', attrib = attribset )
             interaction_list.append('HardSphere Close')
 
-        try:
-            del attribset['Lambda']
-            del attribset['WellDepth']
-        except KeyError:
-            pass
+        attribset = {'Elasticity':'1'}
 
-        try: #No bonded interaction exists for many SC cases.
+        ###############################
+        #  Define bonded interaction  #
+        ###############################
+
+        try: #BB_SC only
             attribset['Name']     = 'Bond ' + pair
             attribset['Type']     = 'SquareBond'
-            attribset['Diameter'] = bond_diam[pair]
-            attribset['Lambda']   = bond_lambda
+            attribset['Diameter'] = BB_SC_bond_diam[pair]
+            attribset['Lambda']   = BB_SC_bond_lambda[pair]
             bondint[pair]         = ET.Element ( 'Interaction', attrib = attribset )
             interaction_list.append('Bond')
-        except KeyError:
+        except KeyError as E:
             pass
 
-        try: #No pseudo interaction defined for many pairs.
+        ###############################
+        #  Define pseudo interaction  #
+        ###############################
+
+        try: #Only SC-NH and SC-CO use this.
             attribset['Name']     = 'Pseudo ' + pair
             attribset['Type']     = 'SquareBond'
-            attribset['Diameter'] = pseudobond_diam[pair]
-            attribset['Lambda']   = pseudobond_lambda
+            attribset['Diameter'] = BB_SC_pseudo_diam[pair]
+            attribset['Lambda']   = BB_SC_pseudo_lambda[pair]
             pseudobondint[pair]   = ET.Element ( 'Interaction', attrib = attribset )
             interaction_list.append('Pseudo')
         except KeyError:
@@ -449,8 +510,8 @@ for ID1 in range( n_bb_sites, len(expanded_sequence) ):
 
         #getInteraction assumes no glycine, i.e. the last SC atom will have same id in GA as in AA.
         ThisInteraction = getInteraction(ID1, ID2, expanded_sequence, n_bb_sites)
-        #For debug:
-        #print ("Assigning pair", ID1, expanded_sequence[ID1], ID2, expanded_sequence[ID2], "as", ThisInteraction.attrib['Name'])
+        if debug:
+            print "Assigning pair", ID1, expanded_sequence[ID1], ID2, expanded_sequence[ID2], "as", ThisInteraction.attrib['Name']
 
         try:
             ET.SubElement(ThisInteraction[0], 'IDPair', attrib = {'ID1':str(ID1_flat), 'ID2':str(ID2_flat)})
@@ -468,17 +529,80 @@ for interaction_dict in [unbondint, closeunbondint, bondint, pseudobondint]:
         else:
             del interaction_dict[key]
 
+######################
+#  Create PSF files  #
+######################
+
+psf_atoms_section = ""
+psf_bonds_section = ""
+
+#Backbone atoms
+for i_res, res in enumerate(sequence):
+    for i_local_atom, atom in enumerate(['NH', 'CH', 'CO']):
+        i_atom = i_res*3 + i_local_atom
+        psf_atoms_section += "{0: >8d} {1: <4} {2: <4d} {3: <4} {4: <4} {4: <4} {5: >10} {6: >13} {7: >11}\n".format(i_atom+1, str(0), i_res, res, atom, "0.000000", "0.0000", "0")
+
+#SC atoms
+for i_res, res in enumerate(nonglycine_expanded_sequence[n_bb_sites:]):
+    i_atom = n_bb_sites + i_res
+    psf_atoms_section += "{0: >8d} {1: <4} {2: <4d} {3: <4} {4: <4} {4: <4} {5: >10} {6: >13} {7: >11}\n".format(i_atom+1, str(0), i_res, res, res, "0.000000", "0.0000", "0")
+
+#BB bonds
+for i_bb_site in range(1,n_bb_sites):
+    psf_bonds_section += "{0: >8d}{1: >8d}".format(i_bb_site, i_bb_site+1)
+
+    if len(psf_bonds_section) - psf_bonds_section.rfind("\n") > 63:
+        psf_bonds_section += "\n"
+
+#SC bonds
+for i_res, res in enumerate(sequence):
+    if res != 'G':
+        i_bb_site = i_res*3 + 2
+        i_sc_site = n_bb_sites + 1 + i_res - sequence[:i_res].count('G')
+        psf_bonds_section += "{0: >8d}{1: >8d}".format(i_bb_site, i_sc_site)
+
+        if len(psf_bonds_section) - psf_bonds_section.rfind("\n") > 63:
+            psf_bonds_section += "\n"
+
+with open(psf_fn, 'w') as psf_file:
+    psf_file.write("PSF\n\n\t1 !NTITLE\n REMARKS " + ''.join(sequence) + " STRUCTURE FILE\n REMARKS DATE: " + date + "\n\n")
+    psf_file.write("{0: >8d}".format(n_bb_sites+n_sc_sites) + " !NATOM\n" + psf_atoms_section + "\n")
+    psf_file.write("{0: >8d}".format(n_bb_sites-1+n_sc_sites) + " !NBOND\n" + psf_bonds_section + "\n\n")
+
 #############################################
 ###              Write file               ###
 #############################################
 
-input_file = open(filename, 'w')
+input_file = open(xml_fn, 'w')
 input_file.write('<!-- DynamO input file contains the PRIME20 model of the sequence: ' + ''.join(sequence) + '. -->\n')
 input_file.write('<!-- Created on ' +date + '. -->\n')
 [ input_file.write(ET.tostring(DynamOconfig, pretty_print=True)) ]
 input_file.close()
 
 #Add thermostat and rescale via dynamod:
-thermostat_command = 'dynamod -T ' + temperature + ' -r ' + temperature + ' -o ' + filename + ' -Z ' + filename + " --round"
-print "Running this command:", thermostat_command
-os.system(thermostat_command)
+thermostat_command = [ 'dynamod',  '-T', temperature, '-r', temperature, '-o', xml_fn, '-Z', xml_fn ]
+print "Running this command:", " ".join(thermostat_command)
+if debug:
+    print subprocess.check_output(thermostat_command)
+else:
+    silent_stdout = subprocess.check_output(thermostat_command)
+
+#Check config is valid with dynarun:
+run_command = ['dynarun', '-c', '1000', '-o', xml_fn, xml_fn]
+print "Running this command:", " ".join(run_command)
+if debug:
+    print subprocess.check_output(run_command)
+else:
+    silent_stdout = subprocess.check_output(run_command)
+
+#Create trajectory file
+traj_command = ['dynamo2xyz', xml_fn]
+print "Running this command:", " ".join(traj_command)
+with open('traj.xyz', 'w') as trajfile:
+    xyz = subprocess.check_output(traj_command)
+    trajfile.write(xyz)
+
+convert_command = ["catdcd", "-o", "traj.dcd", "-xyz", "traj.xyz"]
+subprocess.check_output(convert_command)
+print "Running this command:", " ".join(convert_command)
+os.remove("traj.xyz")
