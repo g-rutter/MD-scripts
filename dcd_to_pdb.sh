@@ -19,7 +19,7 @@ temp=${output_prefix}".temp.pdb"
 
 #Check DCD exists
 if [ -f $DCD_file ]; then
-   continue
+   true
 else
    echo "No such file $DCD_file. Exiting."
    exit
