@@ -37,4 +37,4 @@ rename '-1' '' *.dcd
 module unload vmd-1.9.1
 module load vmd-1.8.6
 
-vmd T${PBS_ARRAYID}.dcd -psf ../*.psf -dispdev text -e ~/scripts/post_process_md/unwrap_script.tcl; mv traj_unwrapped.dcd T${PBS_ARRAYID}-unwrap.dcd
+vmd T${PBS_ARRAYID}.dcd -psf ../*.psf -dispdev text -e $MDdir/unwrap_script.tcl -args ${PBS_ARRAYID}
