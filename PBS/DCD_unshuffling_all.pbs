@@ -27,7 +27,7 @@ cd $PBS_O_WORKDIR
 #{B} Which DCD frame to start with. Typically set this to 1 more than the number of frames so far.  = 1 by default.
    #Run in a directory containing the files to be unshuffled and the log.lammps corresponding to them.
 
-~/scripts/post_process_md/REMD_dcd_unshuffler.py '' 0 1000 ${PBS_ARRAYID}
+$MDdir/REMD/dcd_unshuffler.py '' 0 10000 ${PBS_ARRAYID}
 rename '-1' '' *.dcd
 
 ##########################################
