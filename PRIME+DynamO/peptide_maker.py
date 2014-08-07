@@ -146,7 +146,7 @@ except:
 date               = time.strftime('%X %x %Z')
 box_size_per_res   = 10.0
 box_pad            = 5.0
-box_size           = box_pad + len(sequence)*10.0
+box_size           = 2*box_pad + len(sequence)*box_size_per_res
 n_residues         = len(sequence)
 n_bb_sites         = 3*n_residues
 n_sc_sites         = n_residues - sequence.count('G')
@@ -162,10 +162,11 @@ print 'File name:' , xml_fn , '\n'
 #############################################
 
 res_space = 3.6
-prototype_positions = np.array([ [ 0.   ,  0.   ,  0.   ],
-                                 [ 1.364,  0.121,  0.504],
-                                 [ 2.366,  0.120, -0.624],
-                                 [ 1.28 ,  2.   , -1.   ] ])
+prototype_positions = np.array([ [ 0.   ,  0.   ,  1.   ],
+                                 [ 1.364,  0.121,  1.504],
+                                 [ 2.366,  0.12 ,  0.376],
+                                 [ 1.28 ,  2.   ,  0.   ] ]) \
+                      + [ -box_size/2 + box_pad, 0.0, 0.0 ]
 
 if debug:
     lmp = mylammpsclass()
@@ -202,6 +203,13 @@ lmp_coords = np.zeros([0,3])
 for i_res, res in enumerate(sequence):
     natoms = lmp.get_natoms()
 
+    #Check atoms have been added correctly
+    if atom_tally != natoms:
+        print "ERROR: Internal atom tally doesn't match LAMMPS' natoms."
+        print "Atom tally:", atom_tally
+        print "LAMMPS natoms:", natoms
+        exit()
+
     lmp_coords = np.reshape(lmp_coords, [natoms, 3])
     new_coords = mylammps.create_coords(lmp_coords, i_res, sequence, res_space, prototype_positions)
 
@@ -209,13 +217,6 @@ for i_res, res in enumerate(sequence):
     residue_atoms = [ 'NH', 'CH', 'CO']
     if res != 'G':
         residue_atoms += res
-
-    #Check atoms have been added correctly
-    if atom_tally != natoms:
-        print "ERROR: Internal atom tally doesn't match LAMMPS' natoms."
-        print "Atom tally:", atom_tally
-        print "LAMMPS natoms:", natoms
-        exit()
 
     atom_tally += len(residue_atoms)
 

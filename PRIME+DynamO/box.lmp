@@ -1,4 +1,4 @@
-ALANINE PRIME20 for LAMMPS
+PRIME20 for LAMMPS
 
      0 atoms
      0 bonds
@@ -13,7 +13,7 @@ ALANINE PRIME20 for LAMMPS
      0 angle types
      0 dihedral types
 
- -40.0 1000.0 xlo xhi
- -40.0   40.0 ylo yhi
- -40.0   40.0 zlo zhi
+ -1000.0 1000.0 xlo xhi
+ -1000.0 1000.0 ylo yhi
+ -1000.0 1000.0 zlo zhi
 
