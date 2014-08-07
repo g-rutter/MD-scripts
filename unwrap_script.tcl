@@ -4,6 +4,9 @@ set dir ~/.dots/vmd/pbctools
 source $dir/pkgIndex.tcl
 package require pbctools
 
+set temperature [lindex $argv 0]
+set unwrapped_filename T$temperature-unwrapped.dcd
+
 pbc join chain -all -bondlist
-animate write dcd {traj_unwrapped.dcd}
+animate write dcd $unwrapped_filename
 exit

@@ -5,12 +5,12 @@
 #################
 
 if [ $# -lt 3 ]; then
-   echo "Usage: $0 [DCD_file] [PSF_file] [stride] {clust_cut=0.4}"
-   exit
+    echo "Usage: $0 [DCD_file] [PSF_file] [stride] {clust_cut=0.4}"
+    exit
 elif [ $# -lt 4 ]; then
-   clust_cut=0.4
+    clust_cut=0.4
 else
-   clust_cut=$4
+    clust_cut=$4
 fi
 
 DCD_file=$1
@@ -27,19 +27,19 @@ temp=${output_prefix}".temp.pdb"
 
 #Check DCD exists
 if [ -f $DCD_file ]; then
-   continue
+    true
 else
-   echo "No such file $DCD_file. Exiting."
-   exit
+    echo "No such file $DCD_file. Exiting."
+    exit
 fi
 
 #Check index file exists
 if ! [ -f $IDX_file ]; then
-   if ! [ -f ../$IDX_file ]; then
-      echo "No index file named $IDX_file found. Exiting."
-      exit
-   fi
-   IDX_file=../$IDX_file
+    if ! [ -f ../$IDX_file ]; then
+        echo "No index file named $IDX_file found. Exiting."
+        exit
+    fi
+    IDX_file=../$IDX_file
 fi
 
 echo Settings:
@@ -56,14 +56,9 @@ sleep 2s
 ##############################
 
 if ! [ -f ${PDB_traj} ]; then
-   echo "Converting DCD file to PDB file."
-   catdcd -o ${PDB_traj} -otype pdb -stride ${stride} -stype psf -s ${PSF_file} ${DCD_file}
-   echo "Using regex to fix the PDB trajectory file."
-   cat ${PDB_traj} | perl -pe 's{^[^A].*$}{$n=$n+1; "ENDMDL\nMODEL     $n"}e' | tail +2 | head --lines=-1 >$temp
-   cat $temp | perl -pe 's/(ATOM +\d+)    [41]/\1  N  /' | perl -pe 's/(ATOM +\d+)    2/\1  CA /' | perl -pe 's/(ATOM +\d+)    3/\1  C  /' | perl -pe 's/(ATOM +\d+) +\d+ +(\w)/\1  \2SC \2/' >${PDB_traj}
-   rm -f $temp
+    ${MDdir}/dcd_to_pdb.sh $DCD_file $PSF_file $stride
 else
-   echo "${PDB_traj} already exists. Please delete to recalculate."
+    echo "${PDB_traj} already exists. Please delete to recalculate."
 fi
 
 ###############
@@ -71,8 +66,8 @@ fi
 ###############
 
 if ! [ -f ${output_prefix}_clusters.pdb -a -f ${output_prefix}_clust_id.xvg ]; then
-   echo "Clustering."
-   expect -c "spawn g_cluster -s ${PDB_traj} -f ${PDB_traj} -method gromos -n ${IDX_file} -cl ${output_prefix}_clusters.pdb -cutoff ${clust_cut} -clid ${output_prefix}_clust_id.xvg -o ${output_prefix}_rmsd-clust.xpm -g ${output_prefix}_clust.log -dist ${output_prefix}_rmsd-dist.xvg
+    echo "Clustering."
+    expect -c "spawn g_cluster -s ${PDB_traj} -f ${PDB_traj} -method gromos -n ${IDX_file} -cl ${output_prefix}_clusters.pdb -cutoff ${clust_cut} -clid ${output_prefix}_clust_id.xvg -o ${output_prefix}_rmsd-clust.xpm -g ${output_prefix}_clust.log -dist ${output_prefix}_rmsd-dist.xvg
 
               expect \"Select group for least squares fit and RMSD calculation:\"
               expect \"3*Backbone\"
@@ -87,7 +82,7 @@ if ! [ -f ${output_prefix}_clusters.pdb -a -f ${output_prefix}_clust_id.xvg ]; t
               interact
              "
 else
-   echo "Clustering results already exist. Please delete ${output_prefix}_clusters.pdb to recalculate."
+    echo "Clustering results already exist. Please delete ${output_prefix}_clusters.pdb to recalculate."
 fi
 
 ###########################

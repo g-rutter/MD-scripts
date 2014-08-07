@@ -1,8 +1,8 @@
 #!/bin/bash
 
 if [ $# -lt 3 ]; then
-   echo "Usage: $0 [DCD_file] [PSF_file] [stride]"
-   exit
+    echo "Usage: $0 [DCD_file] [PSF_file] [stride]"
+    exit
 fi
 
 DCD_file=$1
@@ -19,10 +19,10 @@ temp=${output_prefix}".temp.pdb"
 
 #Check DCD exists
 if [ -f $DCD_file ]; then
-   continue
+    true
 else
-   echo "No such file $DCD_file. Exiting."
-   exit
+    echo "No such file $DCD_file. Exiting."
+    exit
 fi
 
 ##############################
