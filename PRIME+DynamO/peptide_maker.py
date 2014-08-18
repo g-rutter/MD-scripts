@@ -16,43 +16,59 @@ import PRIME20_bonded
 import PRIME20_masses
 
 #Turn on for full output from LAMMPS and DynamO
+#including LAMMPS .dcd files.
 debug = False
 
 def gauss():
     return str( random.gauss(0.0, 1.0) )
+
+def mkdir_p(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
 
 def getInteraction(ID1, ID2, expanded_sequence, n_bb_sites):
     """Checks if ID1 and ID2 are bonded or not, and assigns them an interaction from the correct dict of interactions."""
     pair1 = expanded_sequence[ID2] + ' ' + expanded_sequence[ID1]
     pair2 = expanded_sequence[ID1] + ' ' + expanded_sequence[ID2]
 
-    #ID1 is always side-chain. ID1CH is the CH it's connected to.
-    ID1CH = 3*( ID1 - n_bb_sites) + 1
+    resNo1 = expanded_sequence[:ID1+1].count('NH')
+    resNo2 = expanded_sequence[:ID2+1].count('NH')
 
-    if ID2 < n_bb_sites:
-        #ID2 is bb site
+    type1 = expanded_sequence[ID1]
+    type2 = expanded_sequence[ID2]
 
-        if ID2 == ID1CH - 1: #SC pseudobonded to NH
-            return pseudobondint[pair1]
+    SC1 = bool(nonglycine_SC.count(type1))
+    SC2 = bool(nonglycine_SC.count(type2))
 
-        elif ID2 == ID1CH: #SC bonded to CH
-            return bondint[pair1]
+    if resNo1 == resNo2:
+        if type1 == 'CH' or type2 == 'CH':
+            return returnDictFlip( bondint, pair1, pair2 )
+        else:
+            return returnDictFlip( pseudobondint, pair1, pair2 )
 
-        elif ID2 == ID1CH + 1: #SC pseudobonded to CO
-            return pseudobondint[pair1]
+    if SC1:
+        if resNo1 == resNo2 + 1:
+            if type2 == 'CO':
+                return returnDictFlip( closeunbondint, pair1, pair2 )
+        if resNo2 == resNo1 + 1:
+            if type2 == 'NH':
+                return returnDictFlip( closeunbondint, pair1, pair2 )
 
-        #Unbonded if it gets to here. Check if it's a 'close' interaction.
-        elif ( ID1CH - 3 ) < ID2 and ( ID1CH + 3 ) > ID2:
-            try:
-                return closeunbondint[pair2]
-            except KeyError:
-                return closeunbondint[pair1]
+    if SC2:
+        if resNo2 == resNo1 + 1:
+            if type1 == 'CO':
+                return returnDictFlip( closeunbondint, pair1, pair2 )
+        if resNo1 == resNo2 + 1:
+            if type1 == 'NH':
+                return returnDictFlip( closeunbondint, pair1, pair2 )
 
-    #If both particles are sidechain, or if the above falls through, unbonded (and not 'close')
+    return returnDictFlip( unbondint, pair1, pair2 )
+
+def returnDictFlip(dictflip, pair1, pair2):
     try:
-        return unbondint[pair2]
+        return dictflip[pair1]
     except KeyError:
-        return unbondint[pair1]
+        return dictflip[pair2]
 
 def joinStr(string, list_like):
     return string.join(str(item) for item in list_like)
@@ -137,10 +153,12 @@ try:
     sys.argv[1] = [ letter.upper() for letter in sys.argv[1] ]
     if ( sys.argv[1] == list('N16N') ):
         sequence = list('AYHKKCGRYSYCWIPYDIERDRYDNGDKKC')
+    elif ( sys.argv[1][:5] == list('ALPHA') ):
+        sequence = list('ACDEFHIKLMNPQRSTVWY')
     else:
         sequence = list(sys.argv[1])
         assert [ sites.index(residue) for residue in sequence]
-except:
+except ValueError:
     sys.exit('Run as ./peptide_maker.py (sequence) [temperature kT = 1.0] [xml_fn = Hall_peptide].')
 
 date               = time.strftime('%X %x %Z')
@@ -150,9 +168,19 @@ box_size           = 2*box_pad + len(sequence)*box_size_per_res
 n_residues         = len(sequence)
 n_bb_sites         = 3*n_residues
 n_sc_sites         = n_residues - sequence.count('G')
-expanded_sequence  = ['NH','CH','CO']*n_residues + sequence #List of sites including G sites which dont really exist
-nonglycine_expanded_sequence = filter(lambda a: a != 'G', expanded_sequence) #'Real' list, e.g. AGA gives NH,CH,CO,NH,CH,CO,NH,CH,CO,A,A
+n_sites            = n_bb_sites + n_sc_sites
 gap                          = 0.9
+dcd_temp_dir       = "tempDCDs"
+
+expanded_sequence = []
+sidechain_IDs = []
+for letter in sequence:
+    expanded_sequence += ['NH','CH','CO']
+    if letter != 'G':
+        sidechain_IDs.append(len(expanded_sequence))
+        expanded_sequence.append(letter)
+
+nonglycine_expanded_sequence = filter(lambda a: a != 'G', expanded_sequence) #'Real' list, e.g. AGA gives NH,CH,CO,NH,CH,CO,NH,CH,CO,A,A
 
 print 'Sequence:' , ''.join(sequence)
 print 'File name:' , xml_fn , '\n'
@@ -169,6 +197,7 @@ prototype_positions = np.array([ [ 0.   ,  0.   ,  1.   ],
                       + [ -box_size/2 + box_pad, 0.0, 0.0 ]
 
 if debug:
+    mkdir_p(dcd_temp_dir)
     lmp = mylammpsclass()
 else:
     lmp = mylammpsclass("", ["-screen", "none"])
@@ -270,7 +299,8 @@ for i_res, res in enumerate(sequence):
 
     lmp.commands(bondcmds+forcecmds)
 
-    lmp.command( "dump dcd all dcd 20 " + str(i_res) + "test.dcd" )
+    if debug:
+        lmp.command( "dump dcd all dcd 20 " + dcd_temp_dir + "/LAMMPS_" + str(i_res) + "_test.dcd" )
 
     #Run
     lmp.command( "run 1" )
@@ -284,7 +314,9 @@ for i_res, res in enumerate(sequence):
     lmp.command( "run 2000" ) 
     lmp.minimize()
 
-    lmp.command( "undump dcd" )
+    if debug:
+        lmp.command( "undump dcd" )
+
     lmp_coords = np.array(list( lmp.gather_atoms("x", 1,3) ))
 
 lmp.command( "run 20000" ) 
@@ -296,30 +328,6 @@ lmp_coords = np.array(list(lmp.gather_atoms( "x", 1, 3)))
 lmp_coords = np.reshape(lmp_coords, [natoms, 3])
 
 lmp.close()
-
-#############################################
-###          Obtain all positions         ###
-#############################################
-
-#This prog mainly puts all the SC sites at the end, while the LAMMPS portion
-#includes them at the end of each residue, so some translation is required.
-
-i_sc = i_lammps_atom = 0
-
-bb_positions = np.zeros([n_bb_sites, 3])
-sc_positions = np.zeros([n_residues, 3]) #sparsely populated
-
-for i_res, res in enumerate( sequence ):
-    #Add next residue
-    residue_atoms = [ 'NH', 'CH', 'CO']
-
-    for i_atom in [0,1,2]:
-        bb_positions[i_res*3 + i_atom] = lmp_coords[i_lammps_atom]
-        i_lammps_atom += 1
-
-    if res != 'G':
-        sc_positions[i_res] = lmp_coords[i_lammps_atom]
-        i_lammps_atom += 1
 
 #############################################
 ###             Set up classes            ###
@@ -347,20 +355,11 @@ Properties   = ET.SubElement ( DynamOconfig, 'Properties' )
 ParticleData = ET.SubElement ( DynamOconfig, 'ParticleData' )
 
 ####ParticleData section####
-for ID in range( n_bb_sites + n_sc_sites ):
+for ID in range( n_sites ):
     ET.SubElement( ParticleData, 'Pt', attrib = {'ID' : str(ID) } )
-#Give positions and momenta to the backbone sites:
-for i in range( n_bb_sites ):
-    ET.SubElement( ParticleData[i], 'P', attrib = {"x":str( bb_positions[i][0] ), "y":str( bb_positions[i][1] ), "z":str( bb_positions[i][2] )} )
-    ET.SubElement( ParticleData[i], 'V', attrib = {"x":gauss(), "y":gauss(), "z":gauss()} )
 
-#Give positions and momenta to the side chain sites:
-j=0
-for i in range( len(sequence) ):
-    if sequence[i] != 'G':
-        ET.SubElement( ParticleData[j + n_bb_sites], 'P', attrib = {"x":str( sc_positions[i][0] ), "y":str( sc_positions[i][1] ), "z":str( sc_positions[i][2] )} )
-        ET.SubElement( ParticleData[j + n_bb_sites], 'V', attrib = {"x":gauss(), "y":gauss(), "z":gauss()} )
-        j += 1
+    ET.SubElement( ParticleData[ID], 'P', attrib = {"x":str( lmp_coords[ID][0] ), "y":str( lmp_coords[ID][1] ), "z":str( lmp_coords[ID][2] )} )
+    ET.SubElement( ParticleData[ID], 'V', attrib = {"x":gauss(), "y":gauss(), "z":gauss()} )
 
 ####Simulation section####
 
@@ -490,37 +489,27 @@ for n in range( len( nonglycine_sites ) ):
 #        Add each pair of species to its relevant interaction         #
 #######################################################################
 
-ET.SubElement( Interactions, 'Interaction', attrib = {'Type':'PRIME_BB', 'Name':'Backbone', 'Start':'0', 'End':str(n_bb_sites-1) } )
+ET.SubElement( Interactions, 'Interaction', attrib = {'Type':'PRIME_BB', 'Name':'Backbone', 'Start':'0', 'End':str(len(expanded_sequence)-1) } )
 
-#Iterate over every SC-SC and SC-BB pair of sites. ID1 will only be SCs.
-#ID1 and ID2 include glycine as if its a real site, so IDx_flat corrects this.
+#Iterate over every SC-SC and SC-BB pair of sites. ID2 will only be SCs.
 
-for ID1 in range( n_bb_sites, len(expanded_sequence) ):
-
-    if expanded_sequence[ID1] == 'G':
-        continue
-
-    ID1_flat = ID1 - expanded_sequence[:ID1].count('G')
-
-    for ID2 in range( ID1 + 1):
-
-        if expanded_sequence[ID2] == 'G':
+for ID1, type1 in enumerate(expanded_sequence):
+    for ID2 in sidechain_IDs:
+        if ID2<=ID1 and ID1 in sidechain_IDs:
             continue
 
-        ID2_flat= ID2 - expanded_sequence[:ID2].count('G')
+        type2=expanded_sequence[ID2]
 
-        #getInteraction assumes no glycine, i.e. the last SC atom will have same id in GA as in AA.
-        ThisInteraction = getInteraction(ID1, ID2, expanded_sequence, n_bb_sites)
+        ThisInteraction = getInteraction(ID1, ID2, expanded_sequence, sequence)
+
         if debug:
             print "Assigning pair", ID1, expanded_sequence[ID1], ID2, expanded_sequence[ID2], "as", ThisInteraction.attrib['Name']
 
         try:
-            ET.SubElement(ThisInteraction[0], 'IDPair', attrib = {'ID1':str(ID1_flat), 'ID2':str(ID2_flat)})
+            ET.SubElement(ThisInteraction[0], 'IDPair', attrib = {'ID1':str(ID1), 'ID2':str(ID2)})
         except IndexError:
             ET.SubElement(ThisInteraction, 'IDPairRange', attrib = {'Type':'List'})
-            ET.SubElement(ThisInteraction[0], 'IDPair', attrib = {'ID1':str(ID1_flat), 'ID2':str(ID2_flat)})
-
-        #print ID1_flat, ID2_flat
+            ET.SubElement(ThisInteraction[0], 'IDPair', attrib = {'ID1':str(ID1), 'ID2':str(ID2)})
 
 #Now remove interactions that don't apply to any pair.
 for interaction_dict in [unbondint, closeunbondint, bondint, pseudobondint]:
@@ -533,6 +522,10 @@ for interaction_dict in [unbondint, closeunbondint, bondint, pseudobondint]:
 ######################
 #  Create PSF files  #
 ######################
+
+print "----------------------------------------------------"
+print "WARNING PSF FILE-GENERATOR IS OUT OF DATE AND WRONG."
+print "----------------------------------------------------"
 
 psf_atoms_section = ""
 psf_bonds_section = ""
@@ -596,14 +589,17 @@ if debug:
 else:
     silent_stdout = subprocess.check_output(run_command)
 
-#Create trajectory file
-traj_command = ['dynamo2xyz', xml_fn]
-print "Running this command:", " ".join(traj_command)
-with open('traj.xyz', 'w') as trajfile:
-    xyz = subprocess.check_output(traj_command)
-    trajfile.write(xyz)
+if debug:
 
-convert_command = ["catdcd", "-o", "traj.dcd", "-xyz", "traj.xyz"]
-subprocess.check_output(convert_command)
-print "Running this command:", " ".join(convert_command)
-os.remove("traj.xyz")
+    #Create trajectory file
+    traj_command = ['dynamo2xyz', xml_fn]
+    print "Running this command:", " ".join(traj_command)
+    with open('traj.xyz', 'w') as trajfile:
+        xyz = subprocess.check_output(traj_command)
+        trajfile.write(xyz)
+
+    convert_command = ["catdcd", "-o", dcd_temp_dir+"/dynamO_traj.dcd", "-xyz", "traj.xyz"]
+    subprocess.check_output(convert_command)
+    print "Running this command:", " ".join(convert_command)
+
+    os.remove("traj.xyz")
