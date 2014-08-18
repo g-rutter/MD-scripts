@@ -3,6 +3,13 @@
 #PBS -j oe
 #PBS -V
 
+##############
+#  Settings  #
+##############
+
+first_dump_step=0
+freq_dump_steps=10000
+
 ####################################################
 #  Sanity check: Is this job part of a job array?  #
 ####################################################
@@ -27,7 +34,7 @@ cd $PBS_O_WORKDIR
 #{B} Which DCD frame to start with. Typically set this to 1 more than the number of frames so far.  = 1 by default.
    #Run in a directory containing the files to be unshuffled and the log.lammps corresponding to them.
 
-$MDdir/REMD/dcd_unshuffler.py '' 0 10000 ${PBS_ARRAYID}
+$MDdir/REMD/dcd_unshuffler.py '' ${first_dump_step} ${freq_dump_steps} ${PBS_ARRAYID}
 rename '-1' '' *.dcd
 
 ##########################################
