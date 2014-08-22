@@ -70,20 +70,28 @@ for key in BB_SC_ideal_pseudobondlens:
     BB_SC_pseudo_diam[key] = str(float(BB_SC_ideal_pseudobondlens[key])*0.97625)
     BB_SC_pseudo_well_diam[key] = str(float(BB_SC_ideal_pseudobondlens[key])*1.02375)
 
-#For printing out LAMMPS parameters:
+##For printing out LAMMPS parameters:
+#if __name__ == "__main__":
+    #def plus1(i):
+        #while True:
+            #i+=1
+            #yield i
+
+    #go=plus1(7)
+
+    #for SC in list('ACDEFHIKLMNPQRSTVWY'):
+        #for BB in ['NH','CH','CO']:
+            #try:
+                #len=BB_SC_ideal_bondlens[BB+' '+SC]
+            #except:
+                #len=BB_SC_ideal_pseudobondlens[BB+' '+SC]
+            #print "bond_coeff   {3:2}   90.0         {0:.4}   #{1}-{2}".format(len,SC,BB, go.next())
+
 if __name__ == "__main__":
-    def plus1(i):
-        while True:
-            i+=1
-            yield i
-
-    go=plus1(7)
-
-    for SC in list('ACDEFHIKLMNPQRSTVWY'):
-        for BB in ['NH','CH','CO']:
-            try:
-                len=BB_SC_ideal_bondlens[BB+' '+SC]
-            except:
-                len=BB_SC_ideal_pseudobondlens[BB+' '+SC]
-            print "bond_coeff   {3:2}   90.0         {0:.4}   #{1}-{2}".format(len,SC,BB, go.next())
-
+    for SC in list('ACDEFHIK'):
+        pair = "CO "+SC
+        print "{0:.2f},".format(BB_SC_ideal_pseudobondlens[pair]),
+    print ""
+    for SC in list('LMNPQRSTVWY'):
+        pair = "CO "+SC
+        print "{0:.2f},".format(BB_SC_ideal_pseudobondlens[pair]),
