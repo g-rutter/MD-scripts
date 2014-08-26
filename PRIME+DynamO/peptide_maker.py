@@ -26,50 +26,6 @@ def mkdir_p(path):
     if not os.path.exists(path):
         os.makedirs(path)
 
-def getInteraction(ID1, ID2, expanded_sequence, n_bb_sites):
-    """Checks if ID1 and ID2 are bonded or not, and assigns them an interaction from the correct dict of interactions."""
-    pair1 = expanded_sequence[ID2] + ' ' + expanded_sequence[ID1]
-    pair2 = expanded_sequence[ID1] + ' ' + expanded_sequence[ID2]
-
-    resNo1 = expanded_sequence[:ID1+1].count('NH')
-    resNo2 = expanded_sequence[:ID2+1].count('NH')
-
-    type1 = expanded_sequence[ID1]
-    type2 = expanded_sequence[ID2]
-
-    SC1 = bool(nonglycine_SC.count(type1))
-    SC2 = bool(nonglycine_SC.count(type2))
-
-    if resNo1 == resNo2:
-        if type1 == 'CH' or type2 == 'CH':
-            return returnDictFlip( bondint, pair1, pair2 )
-        else:
-            return returnDictFlip( pseudobondint, pair1, pair2 )
-
-    if SC1:
-        if resNo1 == resNo2 + 1:
-            if type2 == 'CO':
-                return returnDictFlip( closeunbondint, pair1, pair2 )
-        if resNo2 == resNo1 + 1:
-            if type2 == 'NH':
-                return returnDictFlip( closeunbondint, pair1, pair2 )
-
-    if SC2:
-        if resNo2 == resNo1 + 1:
-            if type1 == 'CO':
-                return returnDictFlip( closeunbondint, pair1, pair2 )
-        if resNo1 == resNo2 + 1:
-            if type1 == 'NH':
-                return returnDictFlip( closeunbondint, pair1, pair2 )
-
-    return returnDictFlip( unbondint, pair1, pair2 )
-
-def returnDictFlip(dictflip, pair1, pair2):
-    try:
-        return dictflip[pair1]
-    except KeyError:
-        return dictflip[pair2]
-
 def joinStr(string, list_like):
     return string.join(str(item) for item in list_like)
 

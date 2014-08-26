@@ -30,21 +30,29 @@ for bb in ['NH', 'CH', 'CO']:
         #Geometric mixing rules based on 2010 Hall paper for SC and 2001 paper parameters for BB.
         BB_SC_diam[pair]  = str (0.5*( float(BB_BB_diam[bb + ' ' + bb]) + float(SC_SC_diam[res + ' ' + res]) ))
         BB_SC_diam[pair2] = BB_SC_diam[pair]
+        BB_SC_well_diam[pair] = 0.0
+        BB_SC_well_diam[pair2] = 0.0
 
         if bb == 'NH' and ['M','Y','C','E','D','S','T','Q','N','H'].count(res) == 1: #Residues that can Hbond with NH
             BB_SC_well_depth[pair] = '-0.15'
             BB_SC_well_depth[pair2] = '-0.15'
 
             BB_SC_well_diam[pair]  = str ( 2.1 + 0.5*float(SC_SC_well_diam[res + ' ' + res]) )
-            BB_SC_well_diam[pair2] = BB_SC_diam[pair]
+            BB_SC_well_diam[pair2] = BB_SC_well_diam[pair]
 
         elif bb == 'CO' and ['Y','W','C','K','R','S','T','Q','N','H'].count(res) == 1: #Residues that can Hbond with CO
             BB_SC_well_depth[pair] = '-0.15'
             BB_SC_well_depth[pair2] = '-0.15'
 
             BB_SC_well_diam[pair]  = str ( 2.1 + 0.5*float(SC_SC_well_diam[res + ' ' + res]) )
-            BB_SC_well_diam[pair2] = BB_SC_diam[pair]
+            BB_SC_well_diam[pair2] = BB_SC_well_diam[pair]
 
 for diam_dict in [BB_BB_diam, BB_SC_diam, SC_SC_diam]:
     for pair, value in diam_dict.items():
         close_diam[pair] = str( 0.75*float(value) )
+
+for res in list('ACDEFHIKLMNPQRSTVWY'):
+    for res2 in ['NH', 'CO']:
+        pair = res + ' ' + res2
+        pair2 = res2 + ' ' + res
+        print pair, BB_SC_well_diam[pair], BB_SC_well_diam[pair2]
