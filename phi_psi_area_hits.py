@@ -39,14 +39,20 @@ area_definitons = (
 area_names = ( 'bottomleft', 'topleft', 'bottomright', 'topright',
                'alpha_helix' )
 
-#Full n16n and Tiffs n16N regions
-tiffs_regions = ( (0,29), (0,7), (8,15), (16,29) )
+region_names = {
+    #Full n16n and Tiffs n16N regions
+    'n16N_regions' : ( (0,29), (0,7), (8,15), (16,29) ),
 
-#Every single peptide bond
-every_peptide = ((0,1),(1,2),(2,3),(3,4),(4,5),(5,6),(6,7),(7,8),(8,9),(9,10),
-                 (10,11),(11,12),(12,13),(13,14),(14,15),(15,16),(16,17),
-                 (17,18),(18,19),(19,20),(20,21),(21,22),(22,23),(23,24),
-                 (24,25),(25,26),(26,27),(27,28),(28,29)                      )
+    #Every single peptide bond
+    'n16N_every_peptide' : ((0,1),(1,2),(2,3),(3,4),(4,5),(5,6),(6,7),(7,8),(8,9),(9,10),
+                          (10,11),(11,12),(12,13),(13,14),(14,15),(15,16),(16,17),
+                          (17,18),(18,19),(19,20),(20,21),(21,22),(22,23),(23,24),
+                          (24,25),(25,26),(26,27),(27,28),(28,29)                      ),
+
+    #Full S1
+    'S1' : ( (0, 11), )
+}
+
 ##############
 #  Settings  #
 ##############
@@ -55,11 +61,12 @@ parser = argparse.ArgumentParser(description='Using a PDB trajectory of a chain\
     with Ramachandran angles, calculate the relative population of two areas of\
     the Ramachandran A and B.')
 parser.add_argument('PDB_file',  type=str)
+parser.add_argument('Region_name',  type=str, choices=region_names.keys())
 
 args = parser.parse_args()
 
 #My n16N regions (with alpha-helix disrupters as boundaries)
-chain_regions = tiffs_regions
+chain_regions = region_names[args.Region_name]
 
 counts     = np.zeros( [ len(chain_regions), len(area_definitons) ], dtype = int)
 all_counts = np.zeros( [ len(chain_regions) ] )
