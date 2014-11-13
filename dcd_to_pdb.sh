@@ -35,11 +35,26 @@ else
     exit
 fi
 
+###########################
+#  Check file extensions  #
+###########################
+
+if [[ $DCD_filename != *.dcd ]]; then
+    echo "DCD file should have .dcd extension."
+    exit
+fi
+
+if [[ $PSF_file != *.psf ]]; then
+    echo "PSF file should have .psf extension."
+    exit
+fi
+
 #############################
 #  Use catdcd to make PDBs  #
 #############################
 
 echo "Converting DCD file to PDB file."
+echo catdcd -o ${PDB_traj} -otype pdb -stride ${stride} -stype psf -s ${PSF_file} ${DCD_file}
 catdcd -o ${PDB_traj} -otype pdb -stride ${stride} -stype psf -s ${PSF_file} ${DCD_file}
 
 ############################
