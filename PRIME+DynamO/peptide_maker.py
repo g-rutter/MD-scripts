@@ -1,4 +1,4 @@
-#!/usr/bin/python2.7
+#!/usr/bin/python2
 
 from lxml import etree as ET
 import sys
@@ -30,7 +30,7 @@ def joinStr(string, list_like):
     return string.join(str(item) for item in list_like)
 
 def getLambdaDict(well_diam, diam):
-    return { k : str( float(well_diam[k]) / float(diam[k]) ) for k in well_diam.keys() }
+    return dict( (k , str( float(well_diam[k]) / float(diam[k]) )) for k in well_diam.keys() )
 
 def comboDict(dicts = []):
     new_dict = {}
