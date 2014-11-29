@@ -6,12 +6,19 @@
 
 import Bio.PDB as bp
 import math
+import matplotlib
+#Not interactive, can use over SSH
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
 
+##############
+#  Settings  #
+##############
+
+#Plot a bins*bins Ramachandran
 bins=100
-#plt.colorbar()
 
 def degrees(rad_angle) :
    """Converts any angle in radians to degrees.
@@ -28,7 +35,9 @@ def degrees(rad_angle) :
       angle = angle + 360
    return angle
 
-#n_residues = len ( bp.Polypeptide.Polypeptide ( bp.PDBParser().get_structure("", sys.argv[1])[0].get_list()[0] ).get_sequence() )
+#############################################
+#  Extract phi,psi from pdbs, make 2D hist  #
+#############################################
 
 pdb_files = filter ( lambda x: x != 'sep', sys.argv[1:] )
 separate  = any ( filter ( lambda x: x == 'sep', sys.argv[1:] ) )
@@ -52,6 +61,10 @@ for pdb_file in pdb_files:
 
 heatmap, xedges, yedges = np.histogram2d(psis_all, phis_all, bins=bins, normed=True, range=[[-180,180]]*2)
 
+#################
+#  Plot in plt  #
+#################
+
 fig = plt.figure()
 ax = fig.add_subplot(1,1,1)
 ax.set_ylabel("Psi (degrees)")
@@ -61,4 +74,4 @@ imageplot = ax.imshow(heatmap, extent=[-180.0,180.0]*2)
 imageplot.set_interpolation('nearest')
 #imageplot.set_clim(2.0, 200)
 fig.colorbar(imageplot)
-plt.show()
+plt.savefig('Ramachandran.png')
