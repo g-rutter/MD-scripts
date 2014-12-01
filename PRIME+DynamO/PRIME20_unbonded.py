@@ -51,8 +51,9 @@ for diam_dict in [BB_BB_diam, BB_SC_diam, SC_SC_diam]:
     for pair, value in diam_dict.items():
         close_diam[pair] = str( 0.75*float(value) )
 
-for res in list('ACDEFHIKLMNPQRSTVWY'):
-    for res2 in ['NH', 'CO']:
-        pair = res + ' ' + res2
-        pair2 = res2 + ' ' + res
-        print pair, BB_SC_well_diam[pair], BB_SC_well_diam[pair2]
+if __name__ == "__main__":
+    for res in list('ACDEFHIKLMNPQRSTVWY'):
+        for res2 in ['NH', 'CO']:
+            pair = res + ' ' + res2
+            pair2 = res2 + ' ' + res
+            print pair, BB_SC_well_diam[pair], BB_SC_well_diam[pair2]

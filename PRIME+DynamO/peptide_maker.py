@@ -18,7 +18,7 @@ import PRIME20_masses
 
 #Turn on for full output from LAMMPS and DynamO
 #including LAMMPS .dcd files.
-debug = False
+debug = True
 
 def gauss():
     return str( random.gauss(0.0, 1.0) )
@@ -325,6 +325,8 @@ class Species(object):
 ###               Set up XML              ###
 #############################################
 
+HB_strength = 1.0
+
 DynamOconfig = ET.Element    ( 'DynamOconfig', attrib = {'version' : '1.5.0'} )
 
 Simulation   = ET.SubElement ( DynamOconfig, 'Simulation', attrib = {'lastMFT':"-nan"} )
@@ -361,184 +363,68 @@ Dynamics       = ET.SubElement ( Simulation, 'Dynamics', attrib = {'Type':'Newto
 Sorter = ET.SubElement ( Scheduler, 'Sorter', attrib = {'Type':'BoundedPQMinMax3'} )
 
 #Add each species and its list of IDs to the XML tree
-for species in AAs:
-    #Add the species if it has any members
-    if species.ID:
-        temp = ET.SubElement( Genus, 'Species', attrib = species.attrib )
-        temp = ET.SubElement( temp, 'IDRange', attrib = {'Type':'List'} )
-        #Add its IDs
-        [ ET.SubElement( temp, 'ID', attrib = { 'val' : str(i).replace("[","").replace("]","") } ) for i in species.ID ]
+PRIME_species = ET.SubElement( Genus, 'Species', attrib = {'Mass':'PRIMEData', 'Name':'PRIMEGroups', 'Type':'Point'} )
+ET.SubElement( PRIME_species, 'IDRange', attrib = {'Type':'All'} )
 
 temp = ET.SubElement( Globals, 'Global', attrib = {'Type':'Cells','Name':'SchedulerNBList','NeighbourhoodRange':'7.400000000000e+00'})
 ET.SubElement( temp, 'IDRange', attrib = {'Type':'All'})
 
-#######################################################################
-#               Create interaction types in XML format                #
-#######################################################################
+#Interactions section
+PRIME = ET.SubElement( Interactions, 'Interaction', attrib = {'Type':'PRIME', 'Name':'Backbone', 'Topology':"PRIMEData", 'HBStrength':str(HB_strength), 'Scale':'0.80'} )
+ET.SubElement( PRIME, 'IDPairRange', attrib = {'Type':'All'} )
 
-#iterate over all pairs of site types and write all their interactions
-for n in range( len( nonglycine_sites ) ):
-    site_type = nonglycine_sites[n]
-
-    for m in range( n+1 ):
-        site_type2 = nonglycine_sites[m]
-
-        #Backbone-backbone interactions are handled by PRIME_BB interaction:
-        if ['NH','CO','CH'].count(site_type2): 
-            continue
-
-        try:
-            del attribset['Lambda']
-            del attribset['WellDepth']
-        except KeyError:
-            pass
-
-        pair             = site_type + ' ' + site_type2
-        interaction_list = [] #At end of each inner loop, will be used to print which inters are defined for the pair.
-
-        #################################
-        #  Define unbonded interaction  #
-        #################################
-
-        attribset['Name']      = 'Unbond ' + pair
-        attribset['Diameter']  = unbond_diam[pair]
-        try:
-            attribset['Lambda']    = unbond_lambda[pair]
-            attribset['WellDepth'] = welldepth[pair]
-            attribset['Type']      = 'SquareWell'
-            unbondint[pair]        = ET.Element ( 'Interaction', attrib = attribset )
-            interaction_list.append('SquareWell')
-        except KeyError:
-            attribset['Type'] = 'HardSphere'
-            unbondint[pair]   = ET.Element ( 'Interaction', attrib = attribset )
-            interaction_list.append('HardSphere')
-
-        attribset = {'Elasticity':'1'}
-
-        #######################################
-        #  Define unbonded close interaction  #
-        #######################################
-
-        attribset['Name']     = 'Unbond close ' + pair
-        attribset['Diameter'] = close_diam[pair]
-        try:
-            attribset['Lambda']    = close_lambda[pair]
-            attribset['WellDepth'] = welldepth[pair]
-            attribset['Type']      = 'SquareWell'
-            closeunbondint[pair]   = ET.Element ( 'Interaction', attrib = attribset )
-            interaction_list.append('SquareWell Close')
-        except KeyError:
-            attribset['Type']    = 'HardSphere'
-            closeunbondint[pair] = ET.Element ( 'Interaction', attrib = attribset )
-            interaction_list.append('HardSphere Close')
-
-        attribset = {'Elasticity':'1'}
-
-        ###############################
-        #  Define bonded interaction  #
-        ###############################
-
-        try: #BB_SC only
-            attribset['Name']     = 'Bond ' + pair
-            attribset['Type']     = 'SquareBond'
-            attribset['Diameter'] = BB_SC_bond_diam[pair]
-            attribset['Lambda']   = BB_SC_bond_lambda[pair]
-            bondint[pair]         = ET.Element ( 'Interaction', attrib = attribset )
-            interaction_list.append('Bond')
-        except KeyError as E:
-            pass
-
-        ###############################
-        #  Define pseudo interaction  #
-        ###############################
-
-        try: #Only SC-NH and SC-CO use this.
-            attribset['Name']     = 'Pseudo ' + pair
-            attribset['Type']     = 'SquareBond'
-            attribset['Diameter'] = BB_SC_pseudo_diam[pair]
-            attribset['Lambda']   = BB_SC_pseudo_lambda[pair]
-            pseudobondint[pair]   = ET.Element ( 'Interaction', attrib = attribset )
-            interaction_list.append('Pseudo')
-        except KeyError:
-            pass
-
-#######################################################################
-#        Add each pair of species to its relevant interaction         #
-#######################################################################
-
-ET.SubElement( Interactions, 'Interaction', attrib = {'Type':'PRIME_BB', 'Name':'Backbone', 'Start':'0', 'End':str(len(expanded_sequence)-1) } )
-
-#Iterate over every SC-SC and SC-BB pair of sites. ID2 will only be SCs.
-
-for ID1, type1 in enumerate(expanded_sequence):
-    for ID2 in sidechain_IDs:
-        if ID2<=ID1 and ID1 in sidechain_IDs:
-            continue
-
-        type2=expanded_sequence[ID2]
-
-        ThisInteraction = getInteraction(ID1, ID2, expanded_sequence, sequence)
-
-        if debug:
-            print "Assigning pair", ID1, expanded_sequence[ID1], ID2, expanded_sequence[ID2], "as", ThisInteraction.attrib['Name']
-
-        try:
-            ET.SubElement(ThisInteraction[0], 'IDPair', attrib = {'ID1':str(ID1), 'ID2':str(ID2)})
-        except IndexError:
-            ET.SubElement(ThisInteraction, 'IDPairRange', attrib = {'Type':'List'})
-            ET.SubElement(ThisInteraction[0], 'IDPair', attrib = {'ID1':str(ID1), 'ID2':str(ID2)})
-
-#Now remove interactions that don't apply to any pair.
-for interaction_dict in [unbondint, closeunbondint, bondint, pseudobondint]:
-    for key, interaction in interaction_dict.items():
-        if len(interaction) != 0:
-            Interactions.append( interaction )
-        else:
-            del interaction_dict[key]
+#Topology section
+Structure = ET.SubElement ( Topology, 'Structure', attrib = {'Type':'PRIME', 'Name':'PRIMEData'} )
+Molecule  = ET.SubElement ( Structure, 'Molecule', attrib = {'StartID':'0', 'Sequence':''.join(sequence)} )
 
 ######################
 #  Create PSF files  #
 ######################
 
-print "----------------------------------------------------"
-print "WARNING PSF FILE-GENERATOR IS OUT OF DATE AND WRONG."
-print "----------------------------------------------------"
-
 psf_atoms_section = ""
 psf_bonds_section = ""
 
-#Backbone atoms
-for i_res, res in enumerate(sequence):
-    for i_local_atom, atom in enumerate(['NH', 'CH', 'CO']):
-        i_atom = i_res*3 + i_local_atom
-        psf_atoms_section += "{0: >8d} {1: <4} {2: <4d} {3: <4} {4: <4} {4: <4} {5: >10} {6: >13} {7: >11}\n".format(i_atom+1, str(0), i_res, res, atom, "0.000000", "0.0000", "0")
+i_res=-1
+for i_atom, atom in enumerate(expanded_sequence):
 
-#SC atoms
-for i_res, res in enumerate(nonglycine_expanded_sequence[n_bb_sites:]):
-    i_atom = n_bb_sites + i_res
-    psf_atoms_section += "{0: >8d} {1: <4} {2: <4d} {3: <4} {4: <4} {4: <4} {5: >10} {6: >13} {7: >11}\n".format(i_atom+1, str(0), i_res, res, res, "0.000000", "0.0000", "0")
+    if atom == 'NH':
 
-#BB bonds
-for i_bb_site in range(1,n_bb_sites):
-    psf_bonds_section += "{0: >8d}{1: >8d}".format(i_bb_site, i_bb_site+1)
+        atom_label = 'N'
 
-    if len(psf_bonds_section) - psf_bonds_section.rfind("\n") > 63:
-        psf_bonds_section += "\n"
+        i_res+=1
+        if sequence[i_res-1] == 'G':
+            bond_partner = i_atom - 1
+        else:
+            bond_partner = i_atom - 2
 
-#SC bonds
-for i_res, res in enumerate(sequence):
-    if res != 'G':
-        i_bb_site = i_res*3 + 2
-        i_sc_site = n_bb_sites + 1 + i_res - sequence[:i_res].count('G')
-        psf_bonds_section += "{0: >8d}{1: >8d}".format(i_bb_site, i_sc_site)
+        #Set equal to itself to signal no bond partner:
+        if i_res == 0:
+            bond_partner = i_atom
+
+    elif atom == 'CH':
+        bond_partner = i_atom-1
+        atom_label = 'CA'
+
+    elif atom == 'CO':
+        bond_partner = i_atom-1
+        atom_label = 'C'
+
+    else:
+        bond_partner = i_atom-2
+        atom_label = atom+'SC'
+
+    psf_atoms_section += "{0: >8d} {1: <4} {2: <4d} {3: <4} {4: <4} {4: <4} {5: >10} {6: >13} {7: >11}\n".format(i_atom+1, str(0), i_res, sequence[i_res], atom_label, "0.000000", "0.0000", "0")
+
+    if bond_partner != i_atom:
+        psf_bonds_section += "{0: >8d}{1: >8d}".format(bond_partner+1,i_atom+1)
 
         if len(psf_bonds_section) - psf_bonds_section.rfind("\n") > 63:
             psf_bonds_section += "\n"
 
 with open(psf_fn, 'w') as psf_file:
     psf_file.write("PSF\n\n\t1 !NTITLE\n REMARKS " + ''.join(sequence) + " STRUCTURE FILE\n REMARKS DATE: " + date + "\n\n")
-    psf_file.write("{0: >8d}".format(n_bb_sites+n_sc_sites) + " !NATOM\n" + psf_atoms_section + "\n")
-    psf_file.write("{0: >8d}".format(n_bb_sites-1+n_sc_sites) + " !NBOND\n" + psf_bonds_section + "\n\n")
+    psf_file.write("{0: >8d}".format(n_sites) + " !NATOM\n" + psf_atoms_section + "\n")
+    psf_file.write("{0: >8d}".format(n_sites-1) + " !NBOND\n" + psf_bonds_section + "\n\n")
 
 #############################################
 ###              Write file               ###
@@ -554,29 +440,22 @@ input_file.close()
 thermostat_command = [ 'dynamod',  '-T', temperature, '-r', temperature, '-o', xml_fn, '-Z', xml_fn ]
 print "Running this command:", " ".join(thermostat_command)
 if debug:
-    print subprocess.check_output(thermostat_command)
+    print subprocess.Popen(thermostat_command, stderr=subprocess.STDOUT, stdout=subprocess.PIPE).communicate()[0]
 else:
-    silent_stdout = subprocess.check_output(thermostat_command)
+    silent_stdout = subprocess.Popen(thermostat_command, stderr=subprocess.STDOUT, stdout=subprocess.PIPE).communicate()
 
-#Check config is valid with dynarun:
-run_command = ['dynarun', '-c', '1000', '-o', xml_fn, xml_fn]
+#Check config is valid with dynamod:
+run_command = ['dynamod', xml_fn, "--check"]
 print "Running this command:", " ".join(run_command)
 if debug:
-    print subprocess.check_output(run_command)
+    print subprocess.Popen(run_command, stderr=subprocess.STDOUT, stdout=subprocess.PIPE).communicate()[0]
 else:
-    silent_stdout = subprocess.check_output(run_command)
+    silent_stdout = subprocess.Popen(run_command, stderr=subprocess.STDOUT, stdout=subprocess.PIPE).communicate()
 
 if debug:
-
     #Create trajectory file
     traj_command = ['dynamo2xyz', xml_fn]
     print "Running this command:", " ".join(traj_command)
     with open('traj.xyz', 'w') as trajfile:
         xyz = subprocess.check_output(traj_command)
         trajfile.write(xyz)
-
-    convert_command = ["catdcd", "-o", dcd_temp_dir+"/dynamO_traj.dcd", "-xyz", "traj.xyz"]
-    subprocess.check_output(convert_command)
-    print "Running this command:", " ".join(convert_command)
-
-    os.remove("traj.xyz")
