@@ -7,6 +7,7 @@ import time
 import random
 import numpy as np
 import subprocess
+import re
 
 from mylammps import mylammpsclass
 import mylammps
@@ -106,16 +107,36 @@ except:
     temperature = '1.0'
 
 try:
-    sys.argv[1] = [ letter.upper() for letter in sys.argv[1] ]
-    if ( sys.argv[1] == list('N16N') ):
+    sys.argv[1] = sys.argv[1].upper()
+    if ( sys.argv[1] == 'S1' ):
+        sequence = list('PPPWLPYMPPWS')
+    elif ( sys.argv[1] == 'N16N' ):
         sequence = list('AYHKKCGRYSYCWIPYDIERDRYDNGDKKC')
-    elif ( sys.argv[1][:5] == list('ALPHA') ):
+    elif ( sys.argv[1][:5] == 'ALPHA' ):
         sequence = list('ACDEFHIKLMNPQRSTVWY')
     else:
         sequence = list(sys.argv[1])
-        assert [ sites.index(residue) for residue in sequence]
-except ValueError:
-    sys.exit('Run as ./peptide_maker.py (sequence) [temperature kT = 1.0] [xml_fn = Hall_peptide].')
+        valid_input = sites + [ str(number) for number in range(0,10) ]
+        assert ( [ residue in valid_input for residue in list(sys.argv[1])] )
+
+        matches = re.finditer("[0-9]+", sys.argv[1])
+
+        for match in matches:
+
+            letter_index = match.start()-1
+            number = int( match.group() )
+
+            letter = sys.argv[1][letter_index]
+            insertion = letter*number
+            sequence[letter_index] = insertion
+
+        sequence = filter( lambda x: x.isalpha(), sequence)
+        sequence = list(''.join(sequence))
+
+except (ValueError, IndexError) as e:
+    print 'Run as ./peptide_maker.py (sequence) [temperature kT = 1.0] [xml_fn = PRIME_peptide].'
+    print ''
+    raise
 
 date               = time.strftime('%X %x %Z')
 box_size_per_res   = 10.0
