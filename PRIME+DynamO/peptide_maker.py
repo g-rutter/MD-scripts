@@ -30,60 +30,6 @@ def mkdir_p(path):
 def joinStr(string, list_like):
     return string.join(str(item) for item in list_like)
 
-def getLambdaDict(well_diam, diam):
-    return dict( (k , str( float(well_diam[k]) / float(diam[k]) )) for k in well_diam.keys() )
-
-def comboDict(dicts = []):
-    new_dict = {}
-    for d in dicts:
-        new_dict = dict( new_dict.items() + d.items() )
-
-    return new_dict
-
-#############################################
-###       Define interaction dicts        ###
-#############################################
-
-attribset              = {'Elasticity':'1'}
-
-#Dicts imported by category
-SC_SC_diam      = dict(PRIME20_unbonded.SC_SC_diam)
-SC_SC_well_diam = dict(PRIME20_unbonded.SC_SC_well_diam)
-SC_SC_lambda    = getLambdaDict(SC_SC_well_diam, SC_SC_diam)
-SC_SC_welldepth = dict(PRIME20_unbonded.SC_SC_well_depth)
-
-BB_SC_unbond_diam      = dict(PRIME20_unbonded.BB_SC_diam)
-BB_SC_unbond_well_diam = dict(PRIME20_unbonded.BB_SC_well_diam)
-BB_SC_unbond_lambda    = getLambdaDict(BB_SC_unbond_well_diam, BB_SC_unbond_diam)
-BB_SC_welldepth        = dict(PRIME20_unbonded.BB_SC_well_depth)
-
-BB_SC_bond_diam      = dict(PRIME20_bonded.BB_SC_diam)
-BB_SC_bond_well_diam = dict(PRIME20_bonded.BB_SC_well_diam)
-BB_SC_bond_lambda    = getLambdaDict(BB_SC_bond_well_diam, BB_SC_bond_diam)
-
-BB_SC_pseudo_diam      = dict(PRIME20_bonded.BB_SC_pseudo_diam)
-BB_SC_pseudo_well_diam = dict(PRIME20_bonded.BB_SC_pseudo_well_diam)
-BB_SC_pseudo_lambda    = getLambdaDict(BB_SC_pseudo_well_diam, BB_SC_pseudo_diam)
-
-#Combined dicts
-unbond_diam       = comboDict( [SC_SC_diam, BB_SC_unbond_diam] )
-unbond_lambda     = comboDict( [SC_SC_lambda, BB_SC_unbond_lambda] )
-unbond_welldiam   = comboDict( [SC_SC_well_diam, BB_SC_unbond_well_diam] )
-welldepth         = comboDict( [SC_SC_welldepth, BB_SC_welldepth] )
-
-#Close (i.e. bonded via neighs) interactions
-close_diam   = dict(PRIME20_unbonded.close_diam)
-close_lambda = getLambdaDict(unbond_welldiam, unbond_diam)
-
-#pseudobond_lambda      = '1.0450' #}http://www.sciencedirect.com/science/article/pii/S0022283611013672 Materials and Methods
-#bond_lambda            = '1.0450' #}
-
-#Interactions will end up written as XML entries to these dicts
-unbondint = {}
-closeunbondint = {}
-pseudobondint = {}
-bondint = {}
-
 #############################################
 ###  Read in the command line parameters  ###
 #############################################
