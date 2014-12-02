@@ -12,13 +12,20 @@ import re
 from mylammps import mylammpsclass
 import mylammps
 
-import PRIME20_unbonded
-import PRIME20_bonded
-import PRIME20_masses
+##############
+#  Settings  #
+##############
 
 #Turn on for full output from LAMMPS and DynamO
 #including LAMMPS .dcd files.
 debug = True
+
+#temp setting. how much beads are shrunk by for close interactions.
+scale = 0.85
+
+###############
+#  Functions  #
+###############
 
 def gauss():
     return str( random.gauss(0.0, 1.0) )
@@ -27,8 +34,8 @@ def mkdir_p(path):
     if not os.path.exists(path):
         os.makedirs(path)
 
-def joinStr(string, list_like):
-    return string.join(str(item) for item in list_like)
+def joinStr(list_like):
+    return " ".join(str(item) for item in list_like)
 
 #############################################
 ###  Read in the command line parameters  ###
@@ -108,9 +115,9 @@ nonglycine_expanded_sequence = filter(lambda a: a != 'G', expanded_sequence) #'R
 print 'Sequence:' , ''.join(sequence)
 print 'File name:' , xml_fn , '\n'
 
-#############################################
-###      Geometry of one amino acid       ###
-#############################################
+##############################
+#  Get Geometry from LAMMPS  #
+##############################
 
 res_space = 3.6
 prototype_positions = np.array([ [ 0.   ,  0.   ,  1.   ],
@@ -125,31 +132,29 @@ if debug:
 else:
     lmp = mylammpsclass("", ["-screen", "none"])
 
+#set up box
 lmp.command( "units real" )
 lmp.command( "dimension 3" )
 lmp.command( "boundary m m m" )
-lmp.command( "atom_style molecular" )
+lmp.command( "atom_style full" )
 lmp.command( "atom_modify sort 0 0" )
 
+#fix NVT, atoms and bonds
 lmp.command( "read_data box.lmp" )
+lmp.command( "fix NVT all nvt temp 300 0.1 100.0" )
 lmp.file("LAMMPS_PRIME20.params")
 
-lj_sigma = 3.0
-lj_distance_cutoff = ( 2.0**(1.0/6) ) * lj_sigma
+#lennard jones repulsions
+#A_NH_sigma = 3.2
+#A_CO_sigma = 3.49
+#A_NH_cut = ( 2.0**(1.0/6) ) * A_NH_sigma
+#A_CO_cut = ( 2.0**(1.0/6) ) * A_CO_sigma
 
-lmp.command( "pair_style table linear 2" )
-lmp.command( "pair_coeff * * LAMMPS_repulsive_pair_table.txt repulsive_linear" )
-
-#lmp.command( "pair_style lj/cut 10.0" )
-#lmp.command( "pair_coeff * * 0.0000 " + str(lj_sigma) )
-#lmp.command( "pair_modify shift yes" )
-
-lmp.command( "special_bonds lj 0 1 1" )
-
-lmp.command( "fix NVT all nvt temp 300 0.1 100.0" )
+#ljs_cmds = [joinStr(["pair_coeff  1 20 lj/cut/coul/cut 0.6000", A_NH_sigma, A_NH_cut, 10.0]),
+           #joinStr(["pair_coeff  1 22 lj/cut/coul/cut 0.6000", A_CO_sigma, A_CO_cut, 10.0]) ]
+#lmp.commands(ljs_cmds)
 
 atom_tally = 0
-
 lmp_coords = np.zeros([0,3])
 
 for i_res, res in enumerate(sequence):
@@ -174,7 +179,7 @@ for i_res, res in enumerate(sequence):
 
     #Create atoms for next residue
     for i_atom, atom in enumerate(residue_atoms):
-        coordstr = joinStr(" ", new_coords[natoms+i_atom])
+        coordstr = joinStr(new_coords[natoms+i_atom])
         typestr  = str( nonglycine_sites.index(atom) + 1 )
         create_cmd = "create_atoms " + typestr + " single " + coordstr
         lmp.command( create_cmd )
@@ -216,6 +221,7 @@ for i_res, res in enumerate(sequence):
     forcecmds = []
 
     pullstrength = 10.0*i_res
+
     forcecmds.append( "fix  negativepull  firstbbatom addforce -{0:f} 0.0 0.0". format(pullstrength) )
     forcecmds.append( "fix  positivepull  lastbbatom  addforce  {0:f} 0.0 0.0". format(pullstrength) )
     force_fix_names = ["negativepull", "positivepull"]
@@ -253,21 +259,6 @@ lmp_coords = np.reshape(lmp_coords, [natoms, 3])
 lmp.close()
 
 #############################################
-###             Set up classes            ###
-#############################################
-
-class Species(object):
-
-    def __init__(self, letter, mass, name, intname, onetype):
-        self.letter = letter
-        self.ID     = []
-
-        for i in range(len(nonglycine_expanded_sequence)):
-            if self.letter == nonglycine_expanded_sequence[i]:
-                self.ID.append(i)
-        self.attrib = {'Mass':mass,'Name':str(name),'IntName':str(intname),"Type":str(onetype)}
-
-#############################################
 ###               Set up XML              ###
 #############################################
 
@@ -287,13 +278,6 @@ for ID in range( n_sites ):
     ET.SubElement( ParticleData[ID], 'V', attrib = {"x":gauss(), "y":gauss(), "z":gauss()} )
 
 ####Simulation section####
-
-AAs = [] #List of Species objects representing each AA, in the same order as sites
-for i in range (22):
-    intname = 'Unbond ' + nonglycine_sites[i] + ' ' + nonglycine_sites[i]
-    if ['NH', 'CH', 'CO'].count(nonglycine_sites[i]):
-        intname = 'Backbone'
-    AAs.append( Species( letter = nonglycine_sites[i], mass = PRIME20_masses.mass[nonglycine_sites[i]], name = nonglycine_names[i], intname = intname, onetype = 'Point') )
 
 Scheduler      = ET.SubElement ( Simulation, 'Scheduler',      attrib = {'Type':'NeighbourList'} )
 SimulationSize = ET.SubElement ( Simulation, 'SimulationSize', attrib = dict(zip(['x','y','z'], [str(box_size)]*3)) )
@@ -316,7 +300,7 @@ temp = ET.SubElement( Globals, 'Global', attrib = {'Type':'Cells','Name':'Schedu
 ET.SubElement( temp, 'IDRange', attrib = {'Type':'All'})
 
 #Interactions section
-PRIME = ET.SubElement( Interactions, 'Interaction', attrib = {'Type':'PRIME', 'Name':'Backbone', 'Topology':"PRIMEData", 'HBStrength':str(HB_strength), 'Scale':'0.80'} )
+PRIME = ET.SubElement( Interactions, 'Interaction', attrib = {'Type':'PRIME', 'Name':'Backbone', 'Topology':"PRIMEData", 'HBStrength':str(HB_strength), 'Scale':str(scale)} )
 ET.SubElement( PRIME, 'IDPairRange', attrib = {'Type':'All'} )
 
 #Topology section
