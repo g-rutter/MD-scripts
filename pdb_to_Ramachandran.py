@@ -12,13 +12,28 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
+import argparse
 
 ##############
 #  Settings  #
 ##############
 
-#Plot a bins*bins Ramachandran
-bins=100
+parser = argparse.ArgumentParser(description='Make Ramachandran out of pdb trajectory')
+parser.add_argument('-b', '--bins', type=int, nargs='?', default=100,
+                    help='Number of bins for Ramachandran in each dimension.')
+parser.add_argument('--nocolour', '-n', action='store_true', default=False)
+parser.add_argument('PDB_file',  type=str, nargs='+')
+
+args = parser.parse_args()
+print args
+
+bins=args.bins
+nocolour=args.nocolour
+pdb_files=args.PDB_file
+
+########################
+#  Rads->Degrees func  #
+########################
 
 def degrees(rad_angle) :
    """Converts any angle in radians to degrees.
@@ -38,12 +53,6 @@ def degrees(rad_angle) :
 #############################################
 #  Extract phi,psi from pdbs, make 2D hist  #
 #############################################
-
-pdb_files = filter ( lambda x: x != 'sep', sys.argv[1:] )
-separate  = any ( filter ( lambda x: x == 'sep', sys.argv[1:] ) )
-
-#print n_residues
-#print separate
 
 phis_all = []
 psis_all = []
@@ -70,8 +79,19 @@ ax = fig.add_subplot(1,1,1)
 ax.set_ylabel("Psi (degrees)")
 ax.set_xlabel("Phi (degrees)")
 
-imageplot = ax.imshow(heatmap, extent=[-180.0,180.0]*2)
+
+if nocolour:
+    cmap=matplotlib.colors.ListedColormap(['white','black'])
+    bounds=[0,np.finfo(type(heatmap.max())).tiny,1]
+    norm = matplotlib.colors.BoundaryNorm(bounds, cmap.N)
+    imageplot = ax.imshow(heatmap, extent=[-180.0,180.0]*2, cmap=cmap, norm=norm)
+
+else:
+    cmap=None
+    norm=None
+    imageplot = ax.imshow(heatmap, extent=[-180.0,180.0]*2, cmap=cmap, norm=norm)
+    fig.colorbar(imageplot)
+
 imageplot.set_interpolation('nearest')
 #imageplot.set_clim(2.0, 200)
-fig.colorbar(imageplot)
 plt.savefig('Ramachandran.png')
