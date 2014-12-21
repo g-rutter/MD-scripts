@@ -313,7 +313,7 @@ for (( ; ; RUN++ )); do
             fi
 
         else
-            exit_reason="Job restarting is disabled in "'$enable_job_restart'
+            exit_reason='Job restarting is disabled in $enable_job_restart'
         fi
         break
 
