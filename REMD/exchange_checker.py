@@ -45,7 +45,7 @@ def roundup(x,i):
 #####################
 
 parser = ArgumentParser(description='Stats and graph about REMD temperature swaps.')
-parser.add_argument('--log', nargs='?', default='log.lammps', dest='logfile_str',
+parser.add_argument('--log', '-l', nargs='?', default='log.lammps', dest='logfile_str',
         help='Name of lammps log file e.g. log.lammps with history of swaps.')
 parser.add_argument('--.in', nargs='?', default=None, dest='infile_str',
         help='The input file from the simulation e.g. n16n-1.in. Set to "auto" to autodetect.')
@@ -53,6 +53,8 @@ parser.add_argument('--outstats', nargs='?', default='REMD_stats.txt', dest='out
         help='Filename for outputted stats text file.')
 parser.add_argument('--outxmg', nargs='?', default='REMD_hist.agr', dest='out_xmgra_str',
         help='Filename for outputted stats text file.')
+parser.add_argument('--nevery', '-n', nargs='?', default=1, dest='n_every', type=int,
+        help='Read every nth line')
 
 args = parser.parse_args()
 out_stats = open(args.out_stats_str, "w")
@@ -88,14 +90,18 @@ with open(args.logfile_str, 'r') as logfile:
 
 n_swaps = file_n_lines(args.logfile_str)-n_header_lines
 
-swaps      = np.empty([n_swaps,n_replicas], dtype = int)
-swap_steps = np.empty([n_swaps],            dtype = int)
+n_swaps_used = int(round(float(n_swaps)/args.n_every))
+
+
+swaps      = np.empty([n_swaps_used,n_replicas], dtype = int)
+swap_steps = np.empty([n_swaps_used],            dtype = int)
 
 print ""
 print "Stats on log file:"
 print "n_replicas: ", n_replicas
 print "n_swaps: ", n_swaps
 print "n_header_lines: ", n_header_lines
+print "n_swaps_used = n_swaps/n_every =", n_swaps_used
 print ""
 
 ######################
@@ -110,11 +116,15 @@ with open(args.logfile_str, 'r') as logfile:
         if i_line < n_header_lines:
             continue
 
+        if (i_line % args.n_every ) != 0:
+            #print i_line
+            continue
+
         i_step = i_line - n_header_lines
         line_list = line.split(' ')
 
-        swap_steps[i_step] = int(line_list[0])
-        swaps[i_step][:]   = line_list[1:]
+        swap_steps[i_step/args.n_every] = int(line_list[0])
+        swaps[i_step/args.n_every][:]   = line_list[1:]
 
 #####################
 #  Get temperature  #
@@ -155,7 +165,7 @@ else:
 print "Unshuffling"
 
 #replicas_temps[i][j] temperature index of replica i at step j
-replicas_temps = np.empty( [ n_replicas, n_swaps ] )
+replicas_temps = np.empty( [ n_replicas, n_swaps_used ] )
 for temp_i in range(n_replicas):
     replicas_temps[temp_i] = np.nonzero(swaps == temp_i)[1]
 
@@ -315,6 +325,7 @@ print >>out_xmgra, "@    XAXIS  tick minor ticks 0"
 print >>out_xmgra, "@    XAXIS  tick major size 1.000000"
 
 for i in range(n_replicas):
+    print >>out_xmgra, "@    s"+str(i), "legend  \"Replica", str(i)+"\""
     print >>out_xmgra, "@target G0.S"+str(i)
     print >>out_xmgra, "@type xy"
     for j in range(n_replicas):
