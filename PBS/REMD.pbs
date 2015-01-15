@@ -1,0 +1,118 @@
+# vim: set filetype=sh:
+
+#!/bin/bash
+#PBS -l nodes=15:ppn=1,pvmem=4000mb,walltime=48:00:00
+#PBS -j oe
+#PBS -V
+
+#set temps in the array and make sure nodes above matches.
+#run as qsub -F "\"[res] [len] [dynamo mode]\"" REMD.pbs
+
+START_T=$(date +%s)
+
+if [ -z "$PBS_O_WORKDIR" ]; then
+    PBS_O_WORKDIR=`pwd`
+else
+    cd $PBS_O_WORKDIR
+fi
+
+help="Run as $0 [res] [len] [dynamo mode]"
+
+readonly args=($@)
+if [[ ${args[0]} == '' ]]; then echo $help; exit; else readonly res=${args[0]}; fi
+if [[ ${args[1]} == '' ]]; then echo $help; exit; else readonly len=${args[1]}; fi
+if [[ ${args[2]} == '' ]]; then echo $help; exit; else readonly mode=${args[2]}; fi
+
+#For {A,G}20 2001-extended
+temps=(0.07 0.075 0.08 0.083 0.086 0.09 0.095 0.10 0.11 0.112 0.115 0.12 0.125 0.13 0.16)
+
+names=("20-like" "2001" "2001-extendedHB")
+mode_name=${names[$mode]}
+dir="$mode_name/${res}${len}/REMD"
+dynarun=dynarun_$mode_name
+dynamod=dynamod_$mode_name
+psf="$PBS_O_WORKDIR/psf/${res}${len}.psf"
+xml="$PBS_O_WORKDIR/xml/${res}${len}_$mode_name.xml"
+resume="after_equil.xml.bz2"
+N_replicas=${#temps[*]}
+
+mkdir -p $dir
+cd $dir
+
+echo RES: $res LEN: $len MODE: $mode
+echo TEMPS: ${temps[*]}
+
+full_run_zeros="00000000"
+test_run_zeros="00000"
+zeros=$full_run_zeros
+
+echo ""
+echo --START OF EQUILIBRATION--
+echo ""
+
+for i in `seq 0 $((N_replicas-1))`; do
+
+    temp=${temps[$i]}
+    start_xml[$i]=T${temp}.xml.bz2
+    resume_xml[$i]=T${temp}.equiled.xml.bz2
+
+    if [ -f ${resume_xml[$i]} ]; then
+        echo "Using file ${resume_xml[$i]} which already exists."
+    else
+        (
+            ${dynamod} --check -r $temp -T $temp -o ${start_xml[$i]} $xml
+            ${dynarun} -c 1$zeros -s 1 ${start_xml[$i]} -o ${resume_xml[$i]}
+        )&
+    fi
+done
+
+wait
+
+echo ""
+echo --END OF EQUILIBRATION--
+END_EQUIL_T=$(date +%s)
+echo ""
+echo --START OF REMD RUN--
+echo ""
+
+full_run_time=2500000
+full_run_swap_time=500
+test_run_time=30000
+test_run_swap_time=10
+
+~/scripts/MD/PRIME+DynamO/T-REMD.py -r $full_run_time -s $full_run_swap_time -m "_$mode_name" ${resume_xml[*]}
+
+echo ""
+echo --END OF REMD RUN--
+END_REMD_T=$(date +%s)
+echo ""
+echo --START OF MAKING RAMAS--
+echo ""
+
+for i in `seq 0 $((N_replicas-1))`; do
+    (
+        temp=${temps[$i]}
+        cd T$i
+        $MDdir/PRIME+DynamO/snapshots_to_pdb.sh $psf
+        python $MDdir/pdb_to_Ramachandran.py out.pdb
+        cp Ramachandran.png ../T$temp-Ramachandran.png
+    )&
+done
+
+wait
+
+echo ""
+echo --END OF MAKING RAMAS--
+echo ""
+
+END_T=$(date +%s)
+TOTAL_TIME=`~/scripts/time.sh $(( $END_T - $START_T ))`
+EQUIL_TIME=`~/scripts/time.sh $(( $END_EQUIL_T - $START_T ))`
+REMD_TIME=`~/scripts/time.sh $(( $END_REMD_T - $END_EQUIL_T ))`
+RAMA_TIME=`~/scripts/time.sh $(( $END_T - $END_REMD_T ))`
+
+echo "PBS script complete. Time taken: "
+echo Total $TOTAL_TIME
+echo Equil $EQUIL_TIME
+echo REMD  $REMD_TIME
+echo Ramas $RAMA_TIME
