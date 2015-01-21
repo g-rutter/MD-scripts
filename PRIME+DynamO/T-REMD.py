@@ -28,7 +28,6 @@ dynasuffix="_2001-extendedHB"
 
 main_files = 'run_files/'
 
-
 ########################
 #  Command-line input  #
 ########################
@@ -158,7 +157,7 @@ def service_finished_runs(processes):
 
                 with open("T"+str(T_index[j_replica])+"/HB", 'a') as HBfile:
                     HBfile.write( '\n'.join(HBond_matches) )
-                    HBfile.write( '\n\n\n' )
+                    HBfile.write( '\n---\n' )
 
         time.sleep(.03)
 

@@ -80,12 +80,12 @@ avg_antipi_HBs    = float(antipi_HBs)    / ( (N_residues-5) * N_snaps)
 #  Output  #
 ############
 
-table = PrettyTable(["HB type", "Percent"])
-table.add_row(['All', avg_HBs])
-table.add_row(['Alpha', avg_alpha_HBs])
-table.add_row(['Antialpha', avg_antialpha_HBs])
-table.add_row(['Pi', avg_pi_HBs])
-table.add_row(['Antipi', avg_antipi_HBs])
+table = PrettyTable(["HB type" , "Percent"])
+table.add_row(['All'           , 100.0*avg_HBs])
+table.add_row(['Alpha'         , 100.0*avg_alpha_HBs])
+table.add_row(['Antialpha'     , 100.0*avg_antialpha_HBs])
+table.add_row(['Pi'            , 100.0*avg_pi_HBs])
+table.add_row(['Antipi'        , 100.0*avg_antipi_HBs])
 table.float_format['Percent'] = "2.2"
 
 print table
