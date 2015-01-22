@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 # encoding: utf-8
 
 #This tool unshuffles a set of LAMMPS DCD files
@@ -8,6 +8,7 @@ from sys import argv, stdout
 import re
 from subprocess import call
 from os import mkdir, rmdir, remove, devnull, rename, listdir
+import numpy
 
 ##############
 #  Settings  #
@@ -24,16 +25,37 @@ ARGLIM  = 1000         # Max DCD files to ask catdcd to stitch together in one c
 ############################################################
 
 if len(argv) < 5:
-   print ("Run as:", argv[0], "[filestring] [F] [N] [T] {B}")
-   print ("[filestring] If the files are called traj_0.dcd .. traj_N.dcd, filestring is 'traj_'.")
-   print ("[F] First dump step.")
-   print ("[N] Frequency of dump steps.")
-   print ("[T] Which temperature to demultiplex")
-   print ("{B} Which DCD frame to start with. Typically set this to 1 more than the number of frames so far.  = 1 by default.")
-   print ("Run in a directory containing the files to be unshuffled and the log.lammps corresponding to them.")
+   print "Run as:", argv[0], "[filestring] [F] [N] [T] {B}"
+   print "[filestring] If the files are called traj_0.dcd .. traj_N.dcd, filestring is 'traj_'."
+   print "[F] First dump step."
+   print "[N] Frequency of dump steps."
+   print "[T] Which temperature to demultiplex"
+   print "{B} Which DCD frame to start with. Typically set this to 1 more than the number of frames so far.  = 1 by default."
+   print "Run in a directory containing the files to be unshuffled and the log.lammps corresponding to them."
    exit()
 
-swaps = []
+############
+#  Set-up  #
+############
+
+n_swaps = 0
+line = ''
+
+with open(LOGFILE) as REfile:
+   for line in REfile:
+
+      try:
+         assert line[0].isdigit()
+
+         n_swaps += 1
+
+      except AssertionError:
+          pass
+
+line_list = line.split(' ')
+n_replicas = len(line_list)-1
+
+swaps = numpy.empty((n_swaps,n_replicas), dtype=int)
 swap_steps = []
 
 #Assign and validate DCD dump timesteps
@@ -43,13 +65,13 @@ T_index         = int(argv[4]) #which T to piece together
 
 try:
    begin_frame = int(argv[5])
-   print ('Resuming from frame', begin_frame)
+   print 'Resuming from frame', begin_frame
 except IndexError:
    begin_frame = 1
 
 tmp = float(first_dump_step)/N
 if float(int(tmp)) != tmp:
-   print ('Error: first_dump_step is wrong because it\'s not divisible by N.')
+   print 'Error: first_dump_step is wrong because it\'s not divisible by N.'
    exit()
 
 ################################################################################
@@ -68,27 +90,29 @@ def get_temp ( swaps, swap_steps, step ):
 #  Read in RE swaps  #
 ######################
 
-print ("Reading in REMD swaps from log.")
+print "Reading in REMD swaps from log."
 
 n_excluded_lines=0
 excluded_lines=[]
 
 with open(LOGFILE) as REfile:
-   for line in REfile:
+   for i_line, line in enumerate(REfile):
 
       line_list = line.split(' ')
       try:
          assert line[0].isdigit()
 
          swap_steps.append( int(line_list[0]) )
-         swaps.append( [ int(item) for item in line_list[1:] ] )
+
+         for j_item, item in enumerate(line_list[1:]):
+             swaps[i_line][j_item] = int(item)
 
       except AssertionError:
           n_excluded_lines+=1
           excluded_lines.append( line )
 
 n_replicas = len(line_list)-1
-print (n_excluded_lines, "were excluded.")
+print n_excluded_lines, "were excluded."
 
 ###############################################################
 #  Check in-files exist, prepare for tmp files and out-files  #
@@ -103,7 +127,7 @@ for in_fn in in_fns:
       with open(in_fn, 'rb'):
          pass
    except IOError:
-      print ("File", in_fn, "doesn't exist. Exiting.")
+      print "File", in_fn, "doesn't exist. Exiting."
       exit()
 
 ###############
@@ -112,10 +136,10 @@ for in_fn in in_fns:
 
 try:
    mkdir(TMP_DIR)
-except FileExistsError:
+except OSError: #Assume this means dir exists. Not foolproof
    pass
 
-print ("Reordering frames from", n_replicas, "replicas.")
+print "Reordering frames from", n_replicas, "replicas."
 stdout.flush()
 
 sample_steps = range(first_dump_step, swap_steps[-1], N)
@@ -124,13 +148,13 @@ file_prefix = TMP_DIR+"/T"+str(T_index)+"-"
 
 for first in range( begin_frame - 1, len(sample_steps), DIRLIM ):
    #Extract frames, DIRLIM at a time.
-   #if first != 0:
-      #exit()
    for i, sample_step in enumerate(sample_steps[first:first+DIRLIM]):
 
       j = i + first
       #Obtain replica index correpsonding to T_index at given sample_step
-      T_pos = get_temp( swaps, swap_steps, sample_step ).index(T_index)
+      pos_array = get_temp( swaps, swap_steps, sample_step )
+      T_pos = numpy.where( pos_array == T_index )[0][0]
+
       sj = str(j+1)
       tmp_DCDs.append(file_prefix+sj+".dcd")
 
@@ -162,7 +186,7 @@ for first in range( begin_frame - 1, len(sample_steps), DIRLIM ):
 
 rename(tmp_DCDs[0], filestring + "T" + str(T_index) + "-" + str(begin_frame) + ".dcd")
 
-print ("Finished temperature index", T_index)
+print "Finished temperature index", T_index
 
 fnull.close()
 
