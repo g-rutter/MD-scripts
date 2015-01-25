@@ -23,7 +23,8 @@ import time
 #  In-script options  #
 #######################
 
-valid_modes = ["_20-like", "_2001", "_2001-extendedHB"]
+valid_modes = ["_20-like", "_2001", "_2001-extendedHB", "_2001-reducedNH", "_2001-reducedNH-biggerCO"]
+
 dynasuffix="_2001-extendedHB"
 
 main_files = 'run_files/'
@@ -154,10 +155,6 @@ def service_finished_runs(processes):
                 with open("T"+str(T_index[j_replica])+"/ETA", 'a') as ETAfile:
                     ETAfile.write( match.group(1)+'\n' )
                 Us[j_replica]=float ( match.group(2) ) * N_atoms
-
-                with open("T"+str(T_index[j_replica])+"/HB", 'a') as HBfile:
-                    HBfile.write( '\n'.join(HBond_matches) )
-                    HBfile.write( '\n---\n' )
 
         time.sleep(.03)
 
