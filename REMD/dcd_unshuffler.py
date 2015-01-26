@@ -50,7 +50,7 @@ with open(LOGFILE) as REfile:
             n_swaps += 1
 
         except AssertionError:
-          pass
+            pass
 
 line_list = line.split(' ')
 n_replicas = len(line_list)-1
@@ -105,11 +105,11 @@ with open(LOGFILE) as REfile:
             swap_steps.append( int(line_list[0]) )
 
             for j_item, item in enumerate(line_list[1:]):
-             swaps[i_line][j_item] = int(item)
+                swaps[i_line][j_item] = int(item)
 
         except AssertionError:
-          n_excluded_lines+=1
-          excluded_lines.append( line )
+            n_excluded_lines+=1
+            excluded_lines.append( line )
 
 n_replicas = len(line_list)-1
 print n_excluded_lines, "were excluded."
