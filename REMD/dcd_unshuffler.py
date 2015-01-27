@@ -27,8 +27,8 @@ ARGLIM  = 1000         # Max DCD files to ask catdcd to stitch together in one c
 if len(argv) < 5:
     print "Run as:", argv[0], "[filestring] [F] [N] [T] {B}"
     print "[filestring] If the files are called traj_0.dcd .. traj_N.dcd, filestring is 'traj_'."
-    print "[F] First dump step."
-    print "[N] Frequency of dump steps."
+    print "[F] First DCD dump step."
+    print "[N] Interval between dcd dump steps."
     print "[T] Which temperature to demultiplex"
     print "{B} Which DCD frame to start with. Typically set this to 1 more than the number of frames so far.  = 1 by default."
     print "Run in a directory containing the files to be unshuffled and the log.lammps corresponding to them."
@@ -38,30 +38,11 @@ if len(argv) < 5:
 #  Set-up  #
 ############
 
-n_swaps = 0
-line = ''
-
-with open(LOGFILE) as REfile:
-    for line in REfile:
-
-        try:
-            assert line[0].isdigit()
-
-            n_swaps += 1
-
-        except AssertionError:
-            pass
-
-line_list = line.split(' ')
-n_replicas = len(line_list)-1
-
-swaps = numpy.empty((n_swaps,n_replicas), dtype=int)
-swap_steps = []
-
 #Assign and validate DCD dump timesteps
-first_dump_step = int(argv[2])
-N               = int(argv[3])
-T_index         = int(argv[4]) #which T to piece together
+first_dcd_dump_step = int(argv[2])
+dcd_dump_dt         = int(argv[3])
+T_index             = int(argv[4]) #which T to piece together
+T_idx_str           = str(T_index)
 
 try:
     begin_frame = int(argv[5])
@@ -69,22 +50,78 @@ try:
 except IndexError:
     begin_frame = 1
 
-tmp = float(first_dump_step)/N
+tmp = float(first_dcd_dump_step)/dcd_dump_dt
 if float(int(tmp)) != tmp:
-    print 'Error: first_dump_step is wrong because it\'s not divisible by N.'
+    print 'Error: first_dcd_dump_step is wrong because it\'s not divisible by dcd_dump_dt (aka N).'
     exit()
 
-################################################################################
-#  function to get list temperature indices for replicas 0-N at given timestep #
-################################################################################
+n_swaps_full = 0
+first_swap_step = None
+line = ''
 
-def get_temp ( swaps, swap_steps, step ):
+with open(LOGFILE) as REfile:
+    content = REfile.readlines()
+    for line in content:
+
+        try:
+            if first_swap_step == None:
+                assert line[0].isdigit()
+                first_swap_step = int( line.split(' ')[0] )
+
+            n_swaps_full += 1
+
+        except AssertionError:
+            pass
+
+    t_swap = int( content[-1].split(' ')[0] ) - int ( content[-2].split(' ')[0] )
+
+n_replicas = len( line.split(' ') ) - 1
+
+swap_steps_full  = numpy.array( [ i_swap*t_swap + first_swap_step for i_swap in range(n_swaps_full) ] )
+dcd_sample_steps = numpy.array( range(first_dcd_dump_step, swap_steps_full[n_swaps_full-1], dcd_dump_dt) )
+
+###############
+#  Functions  #
+###############
+
+def get_swap_steps_i ( swap_steps, step ):
+    '''
+    Returns the position in the swaps array corresponding to the provided step.
+    '''
+
     key = bisect.bisect( swap_steps, step ) - 1
 
     if key == -1:
         key = 0
 
-    return swaps[key]
+    return key
+
+def read_swaps ( LOGFILE, used_swap_steps, T_idx_str ):
+    n_swaps_used = len(used_swap_steps)
+    T_positions  = numpy.empty( n_swaps_used, dtype = int)
+
+    n_excluded_lines=0
+    i_used_swaps = 0
+
+    with open(LOGFILE) as REfile:
+        for line in REfile:
+
+            line_list = line.split()
+
+            try:
+                assert int(line_list[0]) == used_swap_steps[i_used_swaps]
+
+                T_positions[i_used_swaps] = line_list[1:].index(T_idx_str)
+                i_used_swaps += 1
+
+            except (AssertionError, IndexError):
+                n_excluded_lines+=1
+
+    n_replicas = len(line_list)-1
+
+    print n_excluded_lines, "lines were excluded."
+
+    return T_positions
 
 ######################
 #  Read in RE swaps  #
@@ -92,27 +129,11 @@ def get_temp ( swaps, swap_steps, step ):
 
 print "Reading in REMD swaps from log."
 
-n_excluded_lines=0
-excluded_lines=[]
+used_swap_steps = numpy.array( [ swap_steps_full[get_swap_steps_i( swap_steps_full, sample_step)]
+                                                                for sample_step in dcd_sample_steps ] )
+swap_steps_full = None
 
-with open(LOGFILE) as REfile:
-    for i_line, line in enumerate(REfile):
-
-        line_list = line.split(' ')
-        try:
-            assert line[0].isdigit()
-
-            swap_steps.append( int(line_list[0]) )
-
-            for j_item, item in enumerate(line_list[1:]):
-                swaps[i_line][j_item] = int(item)
-
-        except AssertionError:
-            n_excluded_lines+=1
-            excluded_lines.append( line )
-
-n_replicas = len(line_list)-1
-print n_excluded_lines, "were excluded."
+T_positions = read_swaps( LOGFILE, used_swap_steps, str(T_index) )
 
 ###############################################################
 #  Check in-files exist, prepare for tmp files and out-files  #
@@ -142,18 +163,17 @@ except OSError: #Assume this means dir exists. Not foolproof
 print "Reordering frames from", n_replicas, "replicas."
 stdout.flush()
 
-sample_steps = range(first_dump_step, swap_steps[-1], N)
 tmp_DCDs = []
 file_prefix = TMP_DIR+"/T"+str(T_index)+"-"
 
-for first in range( begin_frame - 1, len(sample_steps), DIRLIM ):
+for first in range( begin_frame - 1, len(dcd_sample_steps), DIRLIM ):
     #Extract frames, DIRLIM at a time.
-    for i, sample_step in enumerate(sample_steps[first:first+DIRLIM]):
+    for i, sample_step in enumerate(dcd_sample_steps[first:first+DIRLIM]):
 
         j = i + first
-        #Obtain replica index correpsonding to T_index at given sample_step
-        pos_array = get_temp( swaps, swap_steps, sample_step )
-        T_pos = numpy.where( pos_array == T_index )[0][0]
+        #Obtain replica index corresponding to T_index at given sample_step
+        key = get_swap_steps_i( used_swap_steps, sample_step )
+        T_pos = T_positions[key]
 
         sj = str(j+1)
         tmp_DCDs.append(file_prefix+sj+".dcd")
