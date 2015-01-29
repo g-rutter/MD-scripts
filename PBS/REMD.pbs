@@ -1,12 +1,12 @@
 # vim: set filetype=sh:
 
 #!/bin/bash
-#PBS -l nodes=15:ppn=1,pvmem=4000mb,walltime=48:00:00
+#PBS -l nodes=22:ppn=1,pvmem=4000mb,walltime=48:00:00
 #PBS -j oe
 #PBS -V
 
 #set temps in the array and make sure nodes above matches.
-#run as qsub -F "\"[res] [len] [dynamo mode]\"" REMD.pbs
+#run as qsub -F "\"[res] [len] [dynamo mode] {resume}\"" REMD.pbs
 
 START_T=$(date +%s)
 
@@ -16,30 +16,35 @@ else
     cd $PBS_O_WORKDIR
 fi
 
-help="Run as $0 [res] [len] [dynamo mode]"
+help="Run as $0 [res] [len] [dynamo mode] {resume}"
 
 readonly args=($@)
 if [[ ${args[0]} == '' ]]; then echo $help; exit; else readonly res=${args[0]}; fi
 if [[ ${args[1]} == '' ]]; then echo $help; exit; else readonly len=${args[1]}; fi
 if [[ ${args[2]} == '' ]]; then echo $help; exit; else readonly mode=${args[2]}; fi
+if [[ ${args[3]} == '' ]]; then true;             else readonly resume=${args[3]}; fi
 
 #For {A,G}20 2001-extended
-temps=(0.07 0.075 0.08 0.083 0.086 0.09 0.095 0.10 0.11 0.112 0.115 0.12 0.125 0.13 0.16)
+#temps=(0.070 0.072 0.075 0.077 0.080 0.083 0.086 0.090 0.092 0.095 0.100 0.110 0.115 0.120 0.126 0.160)
+#for HB=1.63
+temps=(0.065 0.075 0.086 0.096 0.103 0.110 0.114 0.117 0.122 0.125 0.130 0.135 0.140 0.146 0.149 0.154 0.163 0.179 0.187 0.195 0.205 0.260)
+#test
+#temps=(0.07 0.072)
 
-names=("20-like" "2001" "2001-extendedHB")
+names=("20-like" "2001" "2001-extendedHB" "2001-NH2.9" "2001-NH2.9-HB1.63" "2001-NH2.9-HB2.00")
 mode_name=${names[$mode]}
-dir="$mode_name/${res}${len}/REMD"
+dir="$mode_name/${res}${len}"
 dynarun=dynarun_$mode_name
 dynamod=dynamod_$mode_name
 psf="$PBS_O_WORKDIR/psf/${res}${len}.psf"
 xml="$PBS_O_WORKDIR/xml/${res}${len}_$mode_name.xml"
-resume="after_equil.xml.bz2"
 N_replicas=${#temps[*]}
 
 mkdir -p $dir
 cd $dir
 
-echo RES: $res LEN: $len MODE: $mode
+echo RES: $res LEN: $len MODE: $mode = $mode_name
+echo RESUME: $resume
 echo TEMPS: ${temps[*]}
 
 full_run_zeros="00000000"
@@ -56,13 +61,15 @@ for i in `seq 0 $((N_replicas-1))`; do
     start_xml[$i]=T${temp}.xml.bz2
     resume_xml[$i]=T${temp}.equiled.xml.bz2
 
-    if [ -f ${resume_xml[$i]} ]; then
-        echo "Using file ${resume_xml[$i]} which already exists."
-    else
-        (
-            ${dynamod} --check -r $temp -T $temp -o ${start_xml[$i]} $xml
-            ${dynarun} -c 1$zeros -s 1 ${start_xml[$i]} -o ${resume_xml[$i]}
-        )&
+    if [[ $resume == '' ]]; then
+        if [ -f ${resume_xml[$i]} ]; then
+            echo "Using file ${resume_xml[$i]} which already exists."
+        else
+            (
+                ${dynamod} --check -r $temp -T $temp -o ${start_xml[$i]} $xml
+                ${dynarun} -c 1$zeros -s 1 ${start_xml[$i]} -o ${resume_xml[$i]}
+            )&
+        fi
     fi
 done
 
@@ -70,39 +77,54 @@ wait
 
 echo ""
 echo --END OF EQUILIBRATION--
+
 END_EQUIL_T=$(date +%s)
 echo ""
 echo --START OF REMD RUN--
 echo ""
 
-full_run_time=2500000
+full_run_time=2000000
 full_run_swap_time=500
-test_run_time=30000
+test_run_time=25000
 test_run_swap_time=10
 
-~/scripts/MD/PRIME+DynamO/T-REMD.py -r $full_run_time -s $full_run_swap_time -m "_$mode_name" ${resume_xml[*]}
+if [[ $resume == '' ]]; then
+    ~/scripts/MD/PRIME+DynamO/T-REMD.py -t $full_run_time -s $full_run_swap_time -m "_$mode_name" ${resume_xml[*]}
+else
+    ~/scripts/MD/PRIME+DynamO/T-REMD.py -t $full_run_time -s $full_run_swap_time -m "_$mode_name"  -r $resume ${resume_xml[*]}
+fi
 
 echo ""
 echo --END OF REMD RUN--
 END_REMD_T=$(date +%s)
 echo ""
-echo --START OF MAKING RAMAS--
+echo --START OF MAKING OUTPUT--
 echo ""
 
-for i in `seq 0 $((N_replicas-1))`; do
+for T in `seq 0 $((N_replicas-1))`; do
     (
-        temp=${temps[$i]}
-        cd T$i
+        temp=${temps[$T]}
+        cd T$T
         $MDdir/PRIME+DynamO/snapshots_to_pdb.sh $psf
-        python $MDdir/pdb_to_Ramachandran.py out.pdb
+        python $MDdir/pdb_to_Ramachandran.py -b 1000 -n out.pdb
         cp Ramachandran.png ../T$temp-Ramachandran.png
     )&
+done
+
+mv $HBond_stats_fn $HBond_stats_fn.old
+
+for T in `seq 0 $((N_replicas-1))`; do
+    cd T$T
+    echo T$T                           >>../$HBond_stats_fn
+    $MDdir/PRIME+DynamO/HBond_stats.py >>../$HBond_stats_fn
+    echo -e "\n---\n"                  >>../$HBond_stats_fn
+    cd ..
 done
 
 wait
 
 echo ""
-echo --END OF MAKING RAMAS--
+echo --END OF MAKING OUTPUT--
 echo ""
 
 END_T=$(date +%s)

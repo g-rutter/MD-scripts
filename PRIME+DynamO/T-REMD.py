@@ -23,7 +23,7 @@ import time
 #  In-script options  #
 #######################
 
-valid_modes = ["_20-like", "_2001", "_2001-extendedHB", "_2001-reducedNH", "_2001-reducedNH-biggerCO"]
+valid_modes = ["_20-like", "_2001", "_2001-extendedHB", "_2001-NH2.9", "_2001-NH2.9-HB1.63", "_2001-NH2.9-HB2.00"]
 
 dynasuffix="_2001-extendedHB"
 
@@ -37,15 +37,17 @@ main_files = 'run_files/'
 parser = ArgumentParser()
 parser.add_argument("infiles", nargs='+', help="Files to start the simulation from, each held at a different temperature.")
 parser.add_argument('-s', type=int, help="Swap frequency; time units.")
-parser.add_argument('-r', type=int, help="Total run time; time units.")
+parser.add_argument('-t', type=int, help="Total run time; time units.")
 parser.add_argument('-m', type=str, help="Dynarun/dynamod mode. Default="+dynasuffix+". Options: "+", ".join(valid_modes))
+parser.add_argument('-r', type=int, help="Resume. Swap number to start main loop from in order to not over-write snapshots. Starts the main loop controlling REMD from iteration $r. Default = 0.", default=0)
 
 #Interpret input
 args  = parser.parse_args()
 
 infiles=args.infiles
 swap_time_root=args.s
-run_time_root=args.r
+run_time_root=args.t
+resume=args.r
 
 if args.m is not None:
     if args.m in valid_modes:
@@ -56,6 +58,8 @@ if args.m is not None:
 
 dynarun="dynarun"+dynasuffix
 dynamod="dynamod"+dynasuffix
+
+exit()
 
 ############################
 #  Read files, get set-up  #
@@ -184,7 +188,9 @@ def bool_swap(T_i,T_j,U_i,U_j):
 
     return False
 
-for i_swap in range(N_swaps):
+print "Starting REMD. Running for", N_swaps, "swaps."
+
+for i_swap in range(resume, N_swaps):
 
     #Submit subruns
     processes = list()
