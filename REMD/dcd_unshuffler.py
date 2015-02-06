@@ -97,6 +97,10 @@ def get_swap_steps_i ( swap_steps, step ):
     return key
 
 def read_swaps ( LOGFILE, used_swap_steps, T_idx_str ):
+    '''
+    Produce a numpy array with the replica index of temperature T
+    for each used timestep
+    '''
     n_swaps_used = len(used_swap_steps)
     T_positions  = numpy.empty( n_swaps_used, dtype = int)
 
