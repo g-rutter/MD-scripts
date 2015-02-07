@@ -31,17 +31,17 @@ def hbond_angle_term( Nx, Ns_COx, Ns_CHx, Cx, Cs_CHx, Cs_NHx ):
 
     return 0.0
 
-def find_hbonds( model ):
+def find_hbonds( model, threshold=0.5 ):
 
     #settings
     hb_dist_cut=8.0
     sigma=4.11
-    e_hb=3.60
 
     #Create list of NH-
     Ns = []
     Cs = []
     pairs_within_cutoff = []
+    hbond_pairs = []
     for atom in model.get_atoms():
         if atom.name == 'N':
             Ns.append(atom)
@@ -49,7 +49,7 @@ def find_hbonds( model ):
             Cs.append(atom)
 
     #Build list of pairs qualifying on:
-    #not pro, within dist cuttoff, not adjacent or same residue
+    #not pro, within dist cutoff, not adjacent or same residue
     for N in Ns:
 
         #check N doesn't belong to Pro; can't Hbond
@@ -97,10 +97,10 @@ def find_hbonds( model ):
 
         pre_energy = -dist_term*angle_term
 
-        if pre_energy > 0.5:
-            print "{0:2d} {1:2d}: {2:.2f}%".format(N_resid, C_resid, 100*pre_energy)
+        if pre_energy > threshold:
+            hbond_pairs.append([N_resid, C_resid, pre_energy])
 
-    return pairs_within_cutoff
+    return hbond_pairs
 
 if __name__ == '__main__':
     for i_model, model in enumerate(bp.PDBParser().get_structure("",PDB_file)):
@@ -108,4 +108,7 @@ if __name__ == '__main__':
         print "-------------------"
         print "Model", i_model
         print "-------------------"
-        pairs =  find_hbonds( model )
+        hbond_pairs =  find_hbonds( model, threshold = 0.5 )
+        for N_res, C_res, val in hbond_pairs:
+            print "{0:2d} {1:2d}: {2:.2f}%".format(N_res, C_res, 100*val)
+
