@@ -1,0 +1,95 @@
+#!/bin/bash
+#PBS -l nodes=1:ppn=1,pvmem=2000mb,walltime=72:00:00
+#PBS -j oe
+#PBS -V
+
+##############
+#  Settings  #
+##############
+
+if [ -z "$PBS_O_WORKDIR" ]; then
+    PBS_O_WORKDIR=`pwd`
+else
+    cd $PBS_O_WORKDIR
+fi
+
+cluster_groups=(0 1 2 3)
+cluster_cuts=(0.2 0.2 0.2 0.4)
+
+traj="T4-unwrapped-5.pdb"
+psf="../n16n.psf"
+
+#Check index file exists
+IDX_file="index.ndx"
+if ! [ -f $IDX_file ]; then
+    if ! [ -f ../$IDX_file ]; then
+        echo "No index file named $IDX_file found. Exiting."
+        exit
+    fi
+    IDX_file=../$IDX_file
+fi
+
+###############
+#  Main loop  #
+###############
+
+for i in `seq 0 $((${#cluster_groups[*]}-1))`; do
+    clust_group=${cluster_groups[$i]}
+    clust_cut=${cluster_cuts[$i]}
+
+    echo "Clustering $i"
+    dir="cluster_group${clust_group}_cut${clust_cut}"
+    mkdir $dir
+
+    ################
+    #  Clustering  #
+    ################
+
+    #expect -c "spawn g_cluster -s ${traj} -f ${traj} -method gromos -n ${IDX_file} -cl $dir/clusters.pdb -cutoff ${clust_cut} -clid $dir/clust-id -o $dir/rmsd-clust.xpm -g $dir/clust.log -dist $dir/rmsd-dist
+
+              #expect \"Select group for least squares fit and RMSD calculation:\"
+              #expect \"3*Backbone\"
+              #expect \"Select a group: $\"
+              #send \"$clust_group\r\"
+
+              #expect \"Select group for output:\"
+              #expect \"4*All\"
+              #expect \"Select a group: $\"
+              #send \"4\r\"
+
+              #interact
+             #"
+
+    ###########################
+    #  Cluster count vs time  #
+    ###########################
+
+    CLIDs=(`tail +16 ${dir}/clust-id.xvg | sed 's/^ *[0-9]\+ \+//'`)
+    Unique_CLIDs=()
+    N_uniq_CLIDs=0
+    CLID_count=()
+
+    echo "Calculating number of clusters over time in file ${dir}/nclusters.agr"
+    echo "Calculating population of clusters in file ${dir}/cluster_counts.agr"
+
+    echo "@    title       \"Number of clusters over time\"" >${dir}/nclusters.agr
+    echo "@    xaxis label \"Frame\""                       >>${dir}/nclusters.agr
+    echo "@    yaxis label \"Number of clusters found\""    >>${dir}/nclusters.agr
+
+    echo "@    title       \"Population of clusters\""       >${dir}/cluster_counts.agr
+    echo "@    xaxis label \"Cluster\""                     >>${dir}/cluster_counts.agr
+    echo "@    yaxis label \"Population\""                  >>${dir}/cluster_counts.agr
+
+    for i in `seq 0 $((${#CLIDs[@]}-1))`; do
+        CLID=${CLIDs[$i]}
+
+        echo -e "$i\t${#CLID_count[*]}" >> ${dir}/nclusters.agr
+
+        CLID_count[$CLID]=$((${CLID_count[$CLID]}+1))
+    done
+
+    for i in `seq 1 $((${#CLID_count[@]}))`; do
+        echo -e "$i\t${CLID_count[$i]}" >> ${dir}/cluster_counts.agr
+    done
+
+done
