@@ -4,6 +4,7 @@
 import bz2
 import glob
 import re
+import sys
 from prettytable import PrettyTable
 from progressbar import ProgressBar
 
@@ -11,13 +12,21 @@ from progressbar import ProgressBar
 #  Get and sort files  #
 ########################
 
+try:
+    start_percent=float(sys.argv[1])
+except IndexError:
+    start_percent=0
+
 def getNumber(filename):
     number=int(filename[9:-8])
     return number
 
 files = glob.glob('Snapshot.*.xml.bz2')
+files= filter( lambda file: 'output' not in file, files)
+
 files.sort(key=getNumber)
-N_snaps = len(files)
+start_pos=int(start_percent*len(files)/100.0)
+N_snaps = len(files)-start_pos
 
 #######################
 #  Get system length  #
@@ -35,16 +44,16 @@ N_residues = len(Chain_seq_match.group(1))
 HBond_list_pattern = re.compile('HBond.*HBonds', re.S)
 HBond_pair_pattern = re.compile('NH="(\d*)" CO="(\d*)"')
 
-HBs = 0
-alpha_HBs = 0
+HBs           = 0
+alpha_HBs     = 0
 antialpha_HBs = 0
-pi_HBs = 0
-antipi_HBs = 0
+pi_HBs        = 0
+antipi_HBs    = 0
 
 print "Processing", N_snaps, "system snaphots..."
 pbar = ProgressBar(maxval=N_snaps).start()
 
-for i_file, filename in enumerate(files):
+for i_file, filename in enumerate(files[start_pos:]):
 
     contents = bz2.BZ2File(filename).read()
     HBond_list_match = HBond_list_pattern.search(contents)
@@ -80,12 +89,12 @@ avg_antipi_HBs    = float(antipi_HBs)    / ( (N_residues-5) * N_snaps)
 #  Output  #
 ############
 
-table = PrettyTable(["HB type" , "Percent"])
-table.add_row(['All'           , 100.0*avg_HBs])
-table.add_row(['Alpha'         , 100.0*avg_alpha_HBs])
-table.add_row(['Antialpha'     , 100.0*avg_antialpha_HBs])
-table.add_row(['Pi'            , 100.0*avg_pi_HBs])
-table.add_row(['Antipi'        , 100.0*avg_antipi_HBs])
+table = PrettyTable(["HB type", "Percent"])
+table.add_row(['All'          , 100.0*avg_HBs])
+table.add_row(['Alpha'        , 100.0*avg_alpha_HBs])
+table.add_row(['Antialpha'    , 100.0*avg_antialpha_HBs])
+table.add_row(['Pi'           , 100.0*avg_pi_HBs])
+table.add_row(['Antipi'       , 100.0*avg_antipi_HBs])
 table.float_format['Percent'] = "2.2"
 
 print table

@@ -109,18 +109,18 @@ echo "@    xaxis label \"Cluster\""                     >>${output_prefix}_clust
 echo "@    yaxis label \"Population\""                  >>${output_prefix}_cluster_counts.xvg
 
 for i in `seq 0 $((${#CLIDs[@]}-1))`; do
-  CLID=${CLIDs[$i]}
-  if ! [[ ${Unique_CLIDs[@]} =~ $CLID"," ]]; then
+    CLID=${CLIDs[$i]}
+    if ! [[ ${Unique_CLIDs[@]} =~ $CLID"," ]]; then
      Unique_CLIDs+=("$CLID,")
-  fi
+    fi
 
-  echo -e "$i\t${#Unique_CLIDs[@]}" >> ${output_prefix}_nclusters.xvg
+    echo -e "$i\t${#Unique_CLIDs[@]}" >> ${output_prefix}_nclusters.xvg
 
-  CLID_count[$CLID]=$((${CLID_count[$CLID]}+1))
+    CLID_count[$CLID]=$((${CLID_count[$CLID]}+1))
 done
 
 for i in `seq 1 $((${#CLID_count[@]}))`; do
-  echo -e "$i\t${CLID_count[$i]}" >> ${output_prefix}_cluster_counts.xvg
+    echo -e "$i\t${CLID_count[$i]}" >> ${output_prefix}_cluster_counts.xvg
 done
 
 ####################################################
