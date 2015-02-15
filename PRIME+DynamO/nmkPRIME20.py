@@ -150,21 +150,36 @@ print 'N chains:', n_chains, '\n'
 
 source_res_count = len(src_config)/4
 
-final_coords = np.empty( [n_chains*n_sites, 3])
+final_coords = np.empty( [n_chains*n_sites, 3] )
+coords = np.empty( [n_sites, 3] )
 
 for i_chain in range(n_chains):
     #start at a random value between 0 and source_res_count-1-len(sequence)
     startres = random.randint( 0, source_res_count-1-len(sequence) )
-    coords = src_config[startres*4 : startres*4+len(sequence)*4]
+    prototype_coords = src_config[startres*4 : startres*4+len(sequence)*4]
 
+    #Extract coords without coords for nonexistent glycine sidechain
+    i_atom = 0
+    for i_res, res in enumerate(sequence):
+
+        if res != 'G':
+            coords[i_atom:i_atom+4] = prototype_coords[i_res*4 : i_res*4+4]
+            i_atom += 4
+        else:
+            coords[i_atom:i_atom+3] = prototype_coords[i_res*4 : i_res*4+3]
+            i_atom += 3
+
+    #Randomise position of whole chain
     min_distance = 0.0
     while min_distance < atom_spacing:
-        print i_chain
         #centre the atoms and add a random rotation
         rotated_and_centred = rotate_and_centre( coords )
 
-        #add random displacement
-        final_chain_coords = rotated_and_centred + [ (random.random()-0.5)*inner_box_size, (random.random()-0.5)*inner_box_size, (random.random()-0.5)*inner_box_size, ]
+        #add random displacement if multiple chains exist
+        if n_chains > 1:
+            final_chain_coords = rotated_and_centred + [ (random.random()-0.5)*inner_box_size, (random.random()-0.5)*inner_box_size, (random.random()-0.5)*inner_box_size, ]
+        else:
+            final_chain_coords = rotated_and_centred
 
         #check min_distance
         min_distance = 10.0
