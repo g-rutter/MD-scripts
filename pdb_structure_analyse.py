@@ -7,6 +7,54 @@ import numpy as np
 
 PDB_file = sys.argv[1]
 
+def count_in_area(area, coordinates):
+    """
+    area is an area specified as ( ( x_low, x_high ), ( y_low, y_high ) )
+    coordinates is an iterable containing N objects, each of which is an
+    iterable containing two items forming a 2D coordinate.
+
+    Returns the number of those coordinates which fall within the area.
+    """
+
+    npcoords = np.array(coordinates)
+
+    #Check if each value is in its range
+    #i.e. xlo < x < xhi and ylo < y < yhi
+    truth    = (npcoords >= [area[0][0],area[1][0]]) & \
+               (npcoords <= [area[0][1],area[1][1]])
+
+    #Check if each pair of values are both in their range together
+    truth2   = truth[1:,0] & truth[:-1,1]
+    count    = truth2.sum()
+
+    return count
+
+def get_phi_psi_hits( phi_psi ):
+
+    motifs = {
+    "beta"      : [ ( ( -np.pi  ,  np.pi/2 ),   ( -0.55*np.pi, np.pi   ) ),
+                  ( ( -np.pi  , -np.pi   ),   ( -2*np.pi/3, -5*np.pi/6 ) ),
+                  ( ( 5*np.pi/6, np.pi/2 ),   ( np.pi, np.pi ) ) ],
+    "ppii"      : [ ( ( -0.55*np.pi, np.pi/2 ), ( 0.0, np.pi) ),
+                  ( ( -2*np.pi/3, -np.pi ),   ( 0.0, -5*np.pi/6 ) ) ],
+    "gamma"     : [ ( ( -np.pi  , np.pi/6  ),   ( 0.0, np.pi/2 ) ) ],
+    "alpha_out" : [ ( ( -np.pi, -np.pi/2   ),   ( 0.0, np.pi/6 ) ) ],
+    "alpha_in"  : [ ( ( -np.pi/2, -0.47*np.pi ),( -np.pi/6, 0.0 ) ) ],
+    "alpha_l"   : [ ( ( 0.21*np.pi, 0.0),       ( np.pi/2, 0.42*np.pi ) ) ],
+    "gamma_l"   : [ ( ( np.pi/3, -2*np.pi/3 ),  ( 2*np.pi/3, 0.0 ) ) ]
+    }
+
+    hits = {}
+
+    for motif_name in motifs:
+        hits[motif_name] = 0
+
+        for area in motifs[motif_name]:
+
+            hits[motif_name] += count_in_area( area, phi_psi )
+
+    return hits
+
 def hbond_angle_term( Nx, Ns_COx, Ns_CHx, Cx, Cs_CHx, Cs_NHx ):
     vec_CO_N = Nx - Ns_COx
     vec_CH_N = Nx - Ns_CHx
@@ -31,7 +79,7 @@ def hbond_angle_term( Nx, Ns_COx, Ns_CHx, Cx, Cs_CHx, Cs_NHx ):
 
     return 0.0
 
-def find_hbonds( model, threshold=0.5 ):
+def find_PLUM_hbonds( model, threshold=0.5 ):
 
     #settings
     hb_dist_cut=8.0
@@ -103,12 +151,24 @@ def find_hbonds( model, threshold=0.5 ):
     return hbond_pairs
 
 if __name__ == '__main__':
+
+    #PLUM hbonds
+    #for i_model, model in enumerate(bp.PDBParser().get_structure("",PDB_file)):
+
+        #print "-------------------"
+        #print "Model", i_model
+        #print "-------------------"
+        #hbond_pairs =  find_PLUM_hbonds( model, threshold = 0.5 )
+        #for N_res, C_res, val in hbond_pairs:
+            #print "{0:2d} {1:2d}: {2:.2f}%".format(N_res, C_res, 100*val)
+
+    #phi_psi area hits
     for i_model, model in enumerate(bp.PDBParser().get_structure("",PDB_file)):
 
-        print "-------------------"
-        print "Model", i_model
-        print "-------------------"
-        hbond_pairs =  find_hbonds( model, threshold = 0.5 )
-        for N_res, C_res, val in hbond_pairs:
-            print "{0:2d} {1:2d}: {2:.2f}%".format(N_res, C_res, 100*val)
+        for chain in model:
 
+            phi_psi = bp.Polypeptide.Polypeptide(chain).get_phi_psi_list()
+
+            total_area_hits = get_phi_psi_hits( phi_psi )
+            print  total_area_hits
+    exit()
