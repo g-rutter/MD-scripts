@@ -14,6 +14,8 @@ parser.add_argument('--temps', nargs='+', default=[275.0,350.0],
       help='Temperatures at which the densities given apply.')
 parser.add_argument('--densities', nargs='+', default=[1.0, 1.0],
       help='Densities at the specified temperatures.')
+parser.add_argument('--temp_bounds', nargs=2, default=[275, 350],
+      help='Low and high temperatures')
 
 if len(argv) == 1:
    parser.parse_args(['-h'])
@@ -24,6 +26,7 @@ print args
 print "N =", args.N
 print "Temps =", args.temps
 print "Densities =", args.densities
+print "Bounds =", args.temp_bounds
 print ""
 
 try:
@@ -35,7 +38,7 @@ except AssertionError:
 #settings
 samples=100000
 
-linear_temps = linspace(275,350,samples)
+linear_temps = linspace(float(args.temp_bounds[0]),float(args.temp_bounds[1]),samples)
 density = interp( linear_temps, args.temps, args.densities )
 density_norm = (density*(args.N-1))/density.sum()
 
@@ -57,7 +60,7 @@ maxlen=0
 temp_str_list=[]
 
 print "Temperature list:"
-for temp in round(nonlinear_temps, 2):
+for temp in round(nonlinear_temps, 4):
    temp_str = str(temp)
    print temp_str,
 
