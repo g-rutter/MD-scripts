@@ -23,9 +23,9 @@ import time
 #  In-script options  #
 #######################
 
-valid_modes = ["_20-like", "_2001", "_2001-extendedHB", "_2001-NH2.9", "_2001-NH2.9-HB1.63", "_2001-NH2.9-HB2.00"]
+valid_modes = ["_20", "_2001", "_2001-HB4.20"]
 
-dynasuffix="_2001-extendedHB"
+dynasuffix="_20"
 
 main_files = 'run_files/'
 
@@ -58,8 +58,6 @@ if args.m is not None:
 
 dynarun="dynarun"+dynasuffix
 dynamod="dynamod"+dynasuffix
-
-exit()
 
 ############################
 #  Read files, get set-up  #
