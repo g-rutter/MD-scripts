@@ -5,6 +5,7 @@ import bz2
 import glob
 import re
 import sys
+from numpy import empty, linalg, arccos, pi
 from prettytable import PrettyTable
 from progressbar import ProgressBar
 from collections import defaultdict
@@ -46,14 +47,30 @@ def resID_to_chainID(resID):
     chainID = resID/period
     return chainID
 
-def getVectorAtoms(chainID, contents):
+def getChainVec(chainID, contents):
     startID = chainID*N_residues*4
     LCa_ID  = startID + 5
     ACa_ID  = startID + 21
 
-    LCa_pattern = re.compile('<Pt ID="'+str(LCa_ID)+'">\n +(?:<P.*>\n +)? (<V.*>)')
-    ACa_pattern = re.compile('<Pt ID="'+str(ACa_ID)+'">\n +(?:<P.*>\n +)? (<V.*>)')
-    print LCa_pattern.findall(contents)
+    LCa_pattern = re.compile('<Pt ID="'+str(LCa_ID)+'">\n +(?:<P.*>\n +)? <V ([xyz]="-?[0-9\.]+") ?([xyz]="-?[0-9\.]+") ?([xyz]="-?[0-9\.]+")')
+    ACa_pattern = re.compile('<Pt ID="'+str(ACa_ID)+'">\n +(?:<P.*>\n +)? <V ([xyz]="-?[0-9\.]+") ?([xyz]="-?[0-9\.]+") ?([xyz]="-?[0-9\.]+")')
+    coords_tuple_L = LCa_pattern.findall(contents)[0]
+    coords_tuple_A = ACa_pattern.findall(contents)[0]
+
+    coords_A = empty([3], dtype=float)
+    coords_L = empty([3], dtype=float)
+
+    for i_axis, axis in enumerate(['x','y','z']):
+        for coordstr in coords_tuple_A:
+            if axis in coordstr:
+               coords_A[i_axis]= float( coordstr[3:-1] )
+        for coordstr in coords_tuple_L:
+            if axis in coordstr:
+               coords_L[i_axis]= float( coordstr[3:-1] )
+
+    vec_L_A = coords_A - coords_L
+    return vec_L_A
+
 ###################
 #  Process files  #
 ###################
@@ -63,6 +80,8 @@ HBond_pair_pattern = re.compile('NH="(\d*)" CO="(\d*)"')
 
 print "Processing", N_snaps, "system snaphots..."
 pbar = ProgressBar(maxval=N_snaps).start()
+
+parallel_chains, antiparallel_chains = 0, 0
 
 for i_file, filename in enumerate(files[start_pos:]):
 
@@ -87,10 +106,26 @@ for i_file, filename in enumerate(files[start_pos:]):
             setkey = set(key)
             chainID1 = setkey.pop()
             chainID2 = setkey.pop()
-            print chainID1, chainID2
             if chainID1 != chainID2 and val > 2:
-                getVectorAtoms(chainID1, contents)
+                chainVec1 = getChainVec(chainID1, contents)
+                chainVec2 = getChainVec(chainID2, contents)
+
+                angle = linalg.linalg.dot(chainVec1, chainVec2)
+                angle /= (linalg.norm(chainVec1)*linalg.norm(chainVec2))
+                angle = arccos(angle)*180/pi
+                if angle < 60:
+                    status = "Parallel"
+                    parallel_chains += 1
+                elif angle > 120:
+                    status = "Antiparallel"
+                    antiparallel_chains += 1
+                else:
+                    status = "Unclassified"
+                print "{0:2d} {1:2d} {2:s}".format(chainID1, chainID2, status)
+
 
 
     pbar.update(i_file+1)
 
+print "Parallel:", parallel_chains
+print "Antiparallel:", antiparallel_chains
