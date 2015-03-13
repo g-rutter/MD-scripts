@@ -16,6 +16,10 @@ N=$2
 #  Auto-settings  #
 ###################
 
+if ! [ -f $PDB_file ]; then
+    echo "PDB file $PDB_file not found."
+    exit
+fi
 
 PDB_filename_noext="${PDB_file%.*}"
 output_prefix=${PDB_filename_noext}"-splitchains"
