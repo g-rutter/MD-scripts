@@ -8,8 +8,7 @@ from sys import argv
 
 parser = ArgumentParser(description='Generate a list of temperatures which'\
                                    +' obey the density function passed in.')
-parser.add_argument('N', nargs='?', default=None, type=int,
-      help='How many temperatures to generate.')
+parser.add_argument('N', type=int, help='How many temperatures to generate.')
 parser.add_argument('--temps', nargs='+', default=[275.0,350.0],
       help='Temperatures at which the densities given apply.')
 parser.add_argument('--densities', nargs='+', default=[1.0, 1.0],
