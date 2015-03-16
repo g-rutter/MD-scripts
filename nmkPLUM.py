@@ -13,6 +13,7 @@
 #Residue represented    | Arginine(R)   | Serine(S) | Threonine(T) | Valine(V)     | Tryptophan (W) | Tyrosine(Y)
 
 import numpy, random, sys, time, math
+import re
 
 ##############
 #  Settings  #
@@ -29,8 +30,8 @@ peptide_pad = 15.0
 #  Read in command-line options  #
 ##################################
 
-all_residues            = list("ACDEFGHIKLMNPQRSTVWY")
-all_nonglycine_residues = list("ACDEFHIKLMNPQRSTVWY")
+SC         = list('ACDEFGHIKLMNPQRSTVWY')
+nongly_SC  = list('ACDEFHIKLMNPQRSTVWY')
 
 outputs = { 'stdout' : sys.stdout, 'stderr' : sys.stderr}
 help = "Run as: " + sys.argv[0] + " [sequence] [number] {filename}"
@@ -40,27 +41,38 @@ try:
 except IndexError, ValueError:
    exit(help)
 
-## Set and check sequence
-known_peptides = {"N16N" : "AYHKKCGRYSYCWIPYDIERDRYDNGDKKC",
-                  "N16NN": "AYHKKCGRYSYCWIPYNIQRNRYNNGNKKC", #http://0-pubs.acs.org.pugwash.lib.warwick.ac.uk/doi/full/10.1021/ja909735y
-                  "S1"   : "PPPWLPYMPPWS", #http://pubs.acs.org/doi/full/10.1021/bm100646z
-                  "S2"   : "LPDWWPPPQLYH",
-                  "S3"   : "SPPRLLPWLRMP",
-                  "W1"   : "EVRKEVVAVARN",
-                  "2A3D" : "MGSWAEFKQRLAAIKTRLQALGGSEAELAAFEKEIAAFESELQAYKGKGNPEVEALRKEAAAIRDELQAYRHN" #http://www.ebi.ac.uk/pdbsum/2a3d
-                  }
-
+#set and check sequence
 try:
-   sequence = list( known_peptides[ sys.argv[1].upper() ] )
-except KeyError:
-   sequence = list( sys.argv[1].upper() )
-   for residue in sequence:
-      try:
-         all_residues.index(residue)
-      except:
-         exit( "Error: " + residue + " is not a residue.\n" + help)
-except IndexError:
-   exit(help)
+    sys.argv[1] = sys.argv[1].upper()
+    if ( sys.argv[1] == 'S1' ):
+        sequence = list('PPPWLPYMPPWS')
+    elif ( sys.argv[1] == 'N16N' ):
+        sequence = list('AYHKKCGRYSYCWIPYDIERDRYDNGDKKC')
+    elif ( sys.argv[1][:5] == 'ALPHA' ):
+        sequence = list('ACDEFGHIKLMNPQRSTVWY')
+    elif (sys.argv[1] == '2A3D'):
+        sequence = list('MGSWAEFKQRLAAIKTRLQALGGSEAELAAFEKEIAAFESELQAYKGKGNPEVEALRKEAAAIRDELQAYRHN')
+    else:
+        sequence = list(sys.argv[1])
+        valid_input = SC + [ str(number) for number in range(0,10) ]
+        assert ( [ residue in valid_input for residue in list(sys.argv[1])] )
+
+        matches = re.finditer("[0-9]+", sys.argv[1])
+
+        for match in matches:
+
+            letter_index = match.start()-1
+            number = int( match.group() )
+
+            letter = sys.argv[1][letter_index]
+            insertion = letter*number
+            sequence[letter_index] = insertion
+
+        sequence = filter( lambda x: x.isalpha(), sequence)
+        sequence = list(''.join(sequence))
+
+except (ValueError, IndexError) as e:
+    exit(help)
 
 try:
    lmp_file = outputs[ sys.argv[3] ]
@@ -108,7 +120,7 @@ def makeCoords(sequence,first_position):
 
     ## side chain (for non-glycine residues)
     try:
-        at=str(all_nonglycine_residues.index(sequence[iRes])+5)
+        at=str(nongly_SC.index(sequence[iRes])+5)
         dr=randomVector(1.53)
 
         positions[i0+3,:]=positions[i0+1,:]+dr
@@ -239,7 +251,7 @@ atomResNumber.append(1)
 
 ## side chain (for non-glycine residues)
 try:
-    at=str(all_nonglycine_residues.index(sequence[iRes])+5)
+    at=str(nongly_SC.index(sequence[iRes])+5)
 
     atomType[i0+3]=at
     atomResidue.append(sequence[iRes])
@@ -252,20 +264,20 @@ bonds.append((i0+1,i0+2))
 bondType.append(1)
 bonds.append((i0+2,i0+3))
 bondType.append(2)
-if sequence[iRes] in all_nonglycine_residues:
+if sequence[iRes] in nongly_SC:
     bonds.append((i0+2,i0+4))
     bondType.append(4)
 
 ## create angles
 angles.append((i0+1,i0+2,i0+3))
 angleType.append(1)
-if sequence[iRes] in all_nonglycine_residues:
+if sequence[iRes] in nongly_SC:
     angles.append((i0+1,i0+2,i0+4))
     angleType.append(4)
     angles.append((i0+3,i0+2,i0+4))
     angleType.append(5)
 
-if sequence[iRes] in all_nonglycine_residues:
+if sequence[iRes] in nongly_SC:
     dihedrals.append((i0+1,i0+2,i0+3,i0+4))
     dihedralType.append(5)
 
@@ -301,7 +313,7 @@ for iRes in range(1,len(sequence)):
 
     ## side chain (for non-glycine residues)
     try:
-        at=str(all_nonglycine_residues.index(sequence[iRes])+5)
+        at=str(nongly_SC.index(sequence[iRes])+5)
 
         atomType[i0+3]=at
         atomResidue.append(sequence[iRes])
@@ -316,7 +328,7 @@ for iRes in range(1,len(sequence)):
     bondType.append(1)
     bonds.append((i0+2,i0+3))
     bondType.append(2)
-    if sequence[iRes] in all_nonglycine_residues:
+    if sequence[iRes] in nongly_SC:
         bonds.append((i0+2,i0+4))
         bondType.append(4)
 
@@ -328,7 +340,7 @@ for iRes in range(1,len(sequence)):
     
     angles.append((i0+1,i0+2,i0+3))
     angleType.append(1)
-    if sequence[iRes] in all_nonglycine_residues:
+    if sequence[iRes] in nongly_SC:
         angles.append((i0+1,i0+2,i0+4))
         angleType.append(4)
         angles.append((i0+3,i0+2,i0+4))
@@ -343,7 +355,7 @@ for iRes in range(1,len(sequence)):
         dihedralType.append(2)
     dihedrals.append((iLast+1,i0+1,i0+2,i0+3))
     dihedralType.append(4)
-    if sequence[iRes] in all_nonglycine_residues:
+    if sequence[iRes] in nongly_SC:
         dihedrals.append((i0+1,i0+2,i0+3,i0+4))
         dihedralType.append(5)
 
