@@ -24,6 +24,7 @@ fi
 PDB_filename_noext="${PDB_file%.*}"
 output_prefix=${PDB_filename_noext}"-splitchains"
 frames_in=`catdcd -num -pdb $PDB_file | ack "^Total" | cut -d " " -f 3`
+frames_out=$((N*frames_in))
 
 echo ${frames_in} frames
 
@@ -79,4 +80,4 @@ END{
 
 ' $PDB_file >$output_prefix.pdb
 
-echo "Done."
+echo "Written ${frames_out} frames."
