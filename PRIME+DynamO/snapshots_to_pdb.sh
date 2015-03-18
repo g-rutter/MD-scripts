@@ -40,8 +40,6 @@ snapshot_files=${all_files[@]//*output*}
 ordered_snapshot_files=(`for file in ${snapshot_files[@]}; do echo "$file"; done\
     | sort -n --field-separator=. -k${startpos}`)
 
-echo ${ordered_snapshot_files[*]}
-
 n_snapshot_files=${#ordered_snapshot_files[*]}
 
 echo $n_snapshot_files files found.
