@@ -48,6 +48,8 @@ try:
         sequence = list('PPPWLPYMPPWS')
     elif ( sys.argv[1] == 'N16N' ):
         sequence = list('AYHKKCGRYSYCWIPYDIERDRYDNGDKKC')
+    elif ( sys.argv[1] == 'N16NN' ):
+        sequence = list('AYHKKCGRYSYCWIPYNIQRNRYNNGNKKC')
     elif ( sys.argv[1][:5] == 'ALPHA' ):
         sequence = list('ACDEFGHIKLMNPQRSTVWY')
     elif (sys.argv[1] == '2A3D'):
