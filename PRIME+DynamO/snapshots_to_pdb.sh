@@ -13,7 +13,7 @@ max_args=1000
 #  Get psf file  #
 ##################
 
-if [ -z "$1" ]; then
+if [[ -z "$1" ]]; then
     psf=(*.psf)
 else
     psf=$1
