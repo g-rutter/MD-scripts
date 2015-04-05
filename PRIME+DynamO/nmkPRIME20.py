@@ -43,30 +43,16 @@ def rotate_and_centre(coords_in):
     coords_out = np.dot(coords_in, xrotarray)
     coords_out = np.dot(coords_out, yrotarray)
 
-    #for i_atom in range(len(coords)):
-        #for j_atom in range(i_atom, len(coords)):
-
-            #atom1_pre  = coords_in[i_atom]
-            #atom1_post = coords_out[i_atom]
-            #atom2_pre  = coords_in[j_atom]
-            #atom2_post = coords_out[j_atom]
-
-            #dist1 = np.linalg.norm(atom1_pre - atom2_pre)
-            #dist2 = np.linalg.norm(atom1_post - atom2_post)
-
-            #if dist1 - dist2 > 10e-12:
-                #print "WARNING: Some error in the random rotation."
-                #print "Atoms:", i_atom, j_atom, "diff in positions:", dist1, dist2
-
     return coords_out - coords_out.mean(axis=0)
 
 #############################################
 ###  Read in the command line parameters  ###
 #############################################
 
-nonglycine_SC    = list('ACDEFHIKLMNPQRSTVWY')
-nonglycine_sites = list(nonglycine_SC) + ['NH', 'CH', 'CO']
-sites            = list(nonglycine_sites) + ['G']
+SC               = list('ACDEFGHIKLMNPQRSTVWY')
+nongly_SC        = list('ACDEFHIKLMNPQRSTVWY')
+nongly_sites     = list(nongly_SC) + ['NH', 'CH', 'CO']
+sites            = list(nongly_sites) + ['G']
 nonglycine_names = ['Alanine', 'Cysteine', 'Aspartic Acid', 'Glutamic Acid', 'Phenylalanine', 'Histidine', 'Isoleucine', 'Lysine', 'Leucine', 'Methionine', 'Asparagine', 'Proline', 'Glutamine', 'Arginine', 'Serine', 'Threonine', 'Valine', 'Tryptophan', 'Tyrosine' ] + ['Nitrogen+Hydrogen', 'Carbon+Hydrogen', 'Carbon+Oxygen']
 
 try:
@@ -93,11 +79,15 @@ try:
         sequence = list('PPPWLPYMPPWS')
     elif ( sys.argv[1] == 'N16N' ):
         sequence = list('AYHKKCGRYSYCWIPYDIERDRYDNGDKKC')
+    elif ( sys.argv[1] == 'N16NN' ):
+        sequence = list('AYHKKCGRYSYCWIPYNIQRNRYNNGNKKC')
     elif ( sys.argv[1][:5] == 'ALPHA' ):
-        sequence = list('ACDEFHIKLMNPQRSTVWY')
+        sequence = list('ACDEFGHIKLMNPQRSTVWY')
+    elif (sys.argv[1] == '2A3D'):
+        sequence = list('MGSWAEFKQRLAAIKTRLQALGGSEAELAAFEKEIAAFESELQAYKGKGNPEVEALRKEAAAIRDELQAYRHN')
     else:
         sequence = list(sys.argv[1])
-        valid_input = sites + [ str(number) for number in range(0,10) ]
+        valid_input = SC + [ str(number) for number in range(0,10) ]
         assert ( [ residue in valid_input for residue in list(sys.argv[1])] )
 
         matches = re.finditer("[0-9]+", sys.argv[1])
@@ -301,7 +291,7 @@ input_file.write('<!-- Created on ' +date + '. -->\n')
 input_file.close()
 
 #Add thermostat and rescale via dynamod:
-thermostat_command = [ 'dynamod_20',  '-T', temperature, '-r', temperature, '-o', xml_fn, '-Z', xml_fn ]
+thermostat_command = [ 'dynamod',  '-T', temperature, '-r', temperature, '-o', xml_fn, '-Z', xml_fn ]
 print "Running this command:", " ".join(thermostat_command)
 if debug:
     print subprocess.Popen(thermostat_command, stderr=subprocess.STDOUT, stdout=subprocess.PIPE).communicate()[0]
@@ -309,7 +299,7 @@ else:
     silent_stdout = subprocess.Popen(thermostat_command, stderr=subprocess.STDOUT, stdout=subprocess.PIPE).communicate()
 
 #Check config is valid with dynamod:
-check_command = ['dynamod_20', xml_fn, "--check", '-o', xml_fn]
+check_command = ['dynamod', xml_fn, "--check", '-o', xml_fn]
 print "Running this command:", " ".join(check_command)
 if debug:
     print subprocess.Popen(check_command, stderr=subprocess.STDOUT, stdout=subprocess.PIPE).communicate()[0]

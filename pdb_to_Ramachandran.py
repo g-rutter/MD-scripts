@@ -35,6 +35,8 @@ nocolour=args.nocolour
 normed=args.normed
 pdb_files=args.PDB_file
 
+out_file = 'Ramachandran_' + pdb_files[0] + '.png'
+
 ########################
 #  Rads->Degrees func  #
 ########################
@@ -113,4 +115,4 @@ imageplot.set_interpolation('nearest')
 clims = imageplot.get_clim()
 print clims
 #imageplot.set_clim(clims[1]*0.01, clims[1])
-plt.savefig('Ramachandran.png')
+plt.savefig(out_file)

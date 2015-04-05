@@ -6,7 +6,7 @@
 import bisect
 from sys import argv, stdout
 import re
-from subprocess import call
+from subprocess import call, Popen, PIPE
 from os import mkdir, rmdir, remove, devnull, rename, listdir
 import numpy
 
@@ -147,6 +147,8 @@ filestring = argv[1]
 in_fns     = [ filestring + str(i) + '.dcd' for i in range(n_replicas) ]
 fnull      = open(devnull, "w")
 
+min_frames = len(dcd_sample_steps)
+
 for in_fn in in_fns:
     try:
         with open(in_fn, 'rb'):
@@ -154,6 +156,18 @@ for in_fn in in_fns:
     except IOError:
         print "File", in_fn, "doesn't exist. Exiting."
         exit()
+
+    #Sometimes the DCD files end short of the full traj length. Check for this.
+    catdcd_output=Popen( [ "catdcd", "-num", in_fn], stdout=PIPE ).communicate()[0]
+    frames = int(catdcd_output.split('\n')[-3].split(' ')[-1])
+    min_frames = min(frames, min_frames)
+    print frames, min_frames
+
+if len(dcd_sample_steps) != min_frames:
+    print "WARNING: Some DCD input files are truncated."
+    print "There should be", len(dcd_sample_steps), "frames, but the shortest"
+    print "DCD file contains", min_frames, "frames. Output will match this."
+    dcd_sample_steps = dcd_sample_steps[0:min_frames]
 
 ###############
 #  Unshuffle  #
