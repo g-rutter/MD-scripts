@@ -19,7 +19,7 @@ import argparse
 ##############
 
 parser = argparse.ArgumentParser(description='Make Ramachandran out of pdb trajectory')
-parser.add_argument('-b', '--bins', type=int, nargs='?', default=1000,
+parser.add_argument('-b', '--bins', type=int, nargs='?', default=200,
                     help='Number of bins for Ramachandran in each dimension.')
 parser.add_argument('--nocolour', '-n', action='store_true', default=False)
 parser.add_argument('--skip', '-s', type=int, default=1)
