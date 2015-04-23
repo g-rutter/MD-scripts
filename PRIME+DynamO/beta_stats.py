@@ -8,7 +8,6 @@ import sys
 import numpy as np
 from numpy.linalg import norm
 from prettytable import PrettyTable
-from progressbar import ProgressBar
 from collections import defaultdict
 
 ##############
@@ -85,12 +84,13 @@ def getAngle(vec1, vec2):
 HBond_list_pattern = re.compile('HBond.*HBonds', re.S)
 HBond_pair_pattern = re.compile('NH="(\d*)" CO="(\d*)"')
 
+sum_perc_para = 0.0
+
 print "Processing", N_snaps, "system snaphots..."
-#pbar = ProgressBar(maxval=N_snaps).start()
 
 for i_file, filename in enumerate(files[start_pos:]):
 
-    print "Processing file", filename
+    print "Processing file {0} ({1:.2f}% complete)".format(filename, 100.0*i_file/N_snaps)
 
     N_anti, N_para = 0, 0
 
@@ -127,8 +127,13 @@ for i_file, filename in enumerate(files[start_pos:]):
                     N_anti += 1
 
     N_tot = N_para + N_anti
-    print "Total beta bonded peptides:", N_tot
+    print "Beta bonded peptides:", N_tot
     if N_tot != 0:
-        print "Para: {0:.2f}%\nAnti: {1:.2f}%".format(100.0*N_para/N_tot, 100.0*N_anti/N_tot)
-    #pbar.update(i_file+1)
+        percent_para = 100.0*N_para/N_tot
+        percent_anti = 100.0*N_anti/N_tot
+        sum_perc_para += percent_para
+        print "Para: {0:.2f}%\nAnti: {1:.2f}%".format(percent_para, percent_anti)
 
+print ""
+print "Average percent para: {0:.2f}%".format(sum_perc_para/N_snaps)
+print "Average percent anti: {0:.2f}%".format(100.0-(sum_perc_para/N_snaps))
