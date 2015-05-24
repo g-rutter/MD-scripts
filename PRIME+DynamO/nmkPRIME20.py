@@ -110,8 +110,8 @@ except (ValueError, IndexError) as e:
     raise
 
 date               = time.strftime('%X %x %Z')
-inner_box_size     = 70.0
-box_pad            = 30.0
+inner_box_size     = 50.0
+box_pad            = 100.0
 box_size           = 2*box_pad + inner_box_size
 n_residues         = len(sequence)
 n_bb_sites         = 3*n_residues
@@ -137,13 +137,13 @@ print 'N chains:', n_chains, '\n'
 #                     Populate atom coords array                      #
 #######################################################################
 
-
 source_res_count = len(src_config)/4
 
 final_coords = np.empty( [n_chains*n_sites, 3] )
 coords = np.empty( [n_sites, 3] )
 
 for i_chain in range(n_chains):
+    print "Chain", i_chain, "...",
     #start at a random value between 0 and source_res_count-1-len(sequence)
     startres = random.randint( 0, source_res_count-1-len(sequence) )
     prototype_coords = src_config[startres*4 : startres*4+len(sequence)*4]
@@ -178,6 +178,7 @@ for i_chain in range(n_chains):
                 min_distance = min( min_distance, np.linalg.norm(atom - atom2) )
 
     final_coords[i_chain*n_sites:(i_chain+1)*n_sites] = final_chain_coords
+    print "Done"
 
 #############################################
 ###               Set up XML              ###
