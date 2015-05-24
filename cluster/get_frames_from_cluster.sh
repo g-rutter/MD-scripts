@@ -9,6 +9,11 @@ target_cluster=$1
 clust_id_file=$2
 PDB=$3
 
+if ! [ -f $PDB ]; then
+    echo "No such PDB: $PDB"
+    exit
+fi
+
 tempdir="temp"
 temp_pdb="temp.pdb"
 out_pdb="C$target_cluster.pdb"

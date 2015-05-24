@@ -23,7 +23,7 @@ parser.add_argument('-b', '--bins', type=int, nargs='?', default=200,
                     help='Number of bins for Ramachandran in each dimension.')
 parser.add_argument('--nocolour', '-n', action='store_true', default=False)
 parser.add_argument('--skip', '-s', type=int, default=1)
-parser.add_argument('--normed', action='store_true', default=False)
+parser.add_argument('--notnormed', action='store_true', default=False)
 parser.add_argument('PDB_file',  type=str, nargs='+')
 
 args = parser.parse_args()
@@ -32,7 +32,7 @@ print args
 bins=args.bins
 skip=args.skip
 nocolour=args.nocolour
-normed=args.normed
+notnormed=args.notnormed
 pdb_files=args.PDB_file
 
 out_file = 'Ramachandran_' + pdb_files[0] + '.png'
@@ -82,7 +82,7 @@ for pdb_file in pdb_files:
 heatmap, xedges, yedges = np.histogram2d(psis_all, phis_all, bins=bins, normed=False, range=[[-180,180]]*2)
 #print heatmap
 
-if normed:
+if notnormed == False:
     heatmap = heatmap/(heatmap.max())
 
 #################
@@ -91,9 +91,11 @@ if normed:
 
 fig = plt.figure()
 ax = fig.add_subplot(1,1,1)
-ax.set_ylabel(r'$\psi$')
-ax.set_xlabel(r'$\phi$')
+ax.set_ylabel(r'$\psi$', fontsize=20)
+ax.set_xlabel(r'$\phi$', fontsize=20)
 
+ax.xaxis.set_ticks( [-180, -120, -60, 0, 60, 120, 180] )
+ax.yaxis.set_ticks( [-180, -120, -60, 0, 60, 120, 180] )
 
 if nocolour:
     cmap=matplotlib.colors.ListedColormap(['white','black'])
