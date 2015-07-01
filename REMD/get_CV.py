@@ -30,17 +30,17 @@ totengs_fn = argv[2]
 ####################
 
 with open(T_fn) as T_file:
-    Ts = [ float(T_str) for T_str in T_file.readline().split(' ') ]
+    Ts = [ float(T_str) for T_str in T_file.readline().split() ]
     N_Ts = len(Ts)
     Ts = array( Ts )
 
 with open(totengs_fn) as TE_file:
     try:
-        N_Ts_check = len( TE_file.readline().split(' ') )
+        N_Ts_check = len( TE_file.readline().split() )
         assert ( N_Ts == N_Ts_check )
     except AssertionError:
         print "According to temps file there are", N_Ts, "temperatures."
-        print "But the first line in TotEngs file only has", N_Ts_check, "entries."
+        print "But the first line in TotEngs file has", N_Ts_check, "entries."
         exit()
 
     N_snapshots = 1 + sum(1 for _ in TE_file)
@@ -79,3 +79,15 @@ for i in range(0, N_Ts-1):
     Cv_2[i]       = (TotEng_avgs[i+1] - TotEng_avgs[i])/(Ts[i+1]-Ts[i])
 
 print "Gradient method:", Cv_2
+
+#############
+#  xmgrace  #
+#############
+
+with open('variance.agr', 'w') as varfile:
+    for i_temp in range(N_Ts):
+        varfile.write( str(Ts[i_temp]) + ' ' + str(Cv_1[i_temp]) + '\n' )
+
+with open('gradient.agr', 'w') as gradfile:
+    for i_temp in range(N_Ts-1):
+        gradfile.write( str(method2_Ts[i_temp]) + ' ' + str(Cv_2[i_temp]) + '\n' )

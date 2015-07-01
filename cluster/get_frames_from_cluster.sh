@@ -1,8 +1,18 @@
 #!/bin/sh
 
+if ! [ $# -eq 3 ]; then
+    echo "Usage: $0 [target_cluster] [clust_id_file] [PDB]"
+    exit
+fi
+
 target_cluster=$1
 clust_id_file=$2
 PDB=$3
+
+if ! [ -f $PDB ]; then
+    echo "No such PDB: $PDB"
+    exit
+fi
 
 tempdir="temp"
 temp_pdb="temp.pdb"

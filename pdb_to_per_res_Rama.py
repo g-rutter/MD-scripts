@@ -19,6 +19,8 @@ import argparse
 ##############
 
 parser = argparse.ArgumentParser(description='Make Ramachandran out of pdb trajectory')
+parser.add_argument('-r', '--residues', type=int, nargs=1,
+                    help='Chain length for group residues from more than 1 chain')
 parser.add_argument('-b', '--bins', type=int, nargs='?', default=200,
                     help='Number of bins for Ramachandran in each dimension.')
 parser.add_argument('--nocolour', '-n', action='store_true', default=False)
@@ -32,6 +34,7 @@ print args
 bins=args.bins
 skip=args.skip
 nocolour=args.nocolour
+n_res=args.residues
 notnormed=args.notnormed
 pdb_files=args.PDB_file
 
@@ -78,6 +81,7 @@ for pdb_file in pdb_files:
                         psis_all.append( degrees(-phi_psi[1]))
         i+=1
 
+exit()
 
 heatmap, xedges, yedges = np.histogram2d(psis_all, phis_all, bins=bins, normed=False, range=[[-180,180]]*2)
 #print heatmap

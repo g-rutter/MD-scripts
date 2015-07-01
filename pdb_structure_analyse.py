@@ -3,7 +3,8 @@
 
 import Bio.PDB as bp
 import sys
-import numpy as np
+from numpy import pi, array, linalg, dot
+from collections import defaultdict
 
 PDB_file = sys.argv[1]
 
@@ -16,12 +17,12 @@ def count_in_area(area, coordinates):
     Returns the number of those coordinates which fall within the area.
     """
 
-    npcoords = np.array(coordinates)
+    npcoords = array(coordinates)
 
     #Check if each value is in its range
     #i.e. xlo < x < xhi and ylo < y < yhi
-    truth    = (npcoords >= [area[0][0],area[1][0]]) & \
-               (npcoords <= [area[0][1],area[1][1]])
+    truth    = (npcoords >= [area[0][0],area[0][1]]) & \
+               (npcoords <= [area[1][0],area[1][1]])
 
     #Check if each pair of values are both in their range together
     truth2   = truth[1:,0] & truth[:-1,1]
@@ -32,16 +33,17 @@ def count_in_area(area, coordinates):
 def get_phi_psi_hits( phi_psi ):
 
     motifs = {
-    "beta"      : [ ( ( -np.pi  ,  np.pi/2 ),   ( -0.55*np.pi, np.pi   ) ),
-                  ( ( -np.pi  , -np.pi   ),   ( -2*np.pi/3, -5*np.pi/6 ) ),
-                  ( ( 5*np.pi/6, np.pi/2 ),   ( np.pi, np.pi ) ) ],
-    "ppii"      : [ ( ( -0.55*np.pi, np.pi/2 ), ( 0.0, np.pi) ),
-                  ( ( -2*np.pi/3, -np.pi ),   ( 0.0, -5*np.pi/6 ) ) ],
-    "gamma"     : [ ( ( -np.pi  , np.pi/6  ),   ( 0.0, np.pi/2 ) ) ],
-    "alpha_out" : [ ( ( -np.pi, -np.pi/2   ),   ( 0.0, np.pi/6 ) ) ],
-    "alpha_in"  : [ ( ( -np.pi/2, -0.47*np.pi ),( -np.pi/6, 0.0 ) ) ],
-    "alpha_l"   : [ ( ( 0.21*np.pi, 0.0),       ( np.pi/2, 0.42*np.pi ) ) ],
-    "gamma_l"   : [ ( ( np.pi/3, -2*np.pi/3 ),  ( 2*np.pi/3, 0.0 ) ) ]
+    "alpha_in"  : [ ( ( -pi/2, -5*pi/12 ) , ( -pi/6, -pi/12    )  ) ],
+    "alpha_in"  : [ ( ( -pi/2, -5*pi/12 ) , ( -pi/6, -pi/12    )  ) ],
+    "alpha_l"   : [ ( ( pi/6, pi/12     ) , ( pi/2, 5*pi/18    )  ) ],
+    "alpha_out" : [ ( ( -pi, -pi/2      ) , ( 0.0, pi/6        )  ) ],
+    "beta"      : [ ( (-pi, pi/2        ) , (-5*pi/9, pi       )  ) ,
+                    ( ( -pi  , -pi      ) , ( -5*pi/9, -5*pi/6 )  ) ,
+                    ( ( 5*pi/6, pi/2    ) , ( pi, pi           )  ) ],
+    "ppii"      : [ ( ( -5*pi/9, pi/2   ) , ( 0.0, pi          )  ) ,
+                    ( ( -5*pi/9, -pi    ) , ( 0.0, -5*pi/6     )  ) ],
+    "gamma"     : [ ( ( -pi  , pi/6     ) , ( 0.0, pi/2        )  ) ],
+    "gamma_l"   : [ ( ( pi/3, -2*pi/3   ) , ( 2*pi/3, 0.0      )  ) ]
     }
 
     hits = {}
@@ -51,7 +53,10 @@ def get_phi_psi_hits( phi_psi ):
 
         for area in motifs[motif_name]:
 
+
             hits[motif_name] += count_in_area( area, phi_psi )
+
+    hits["alpha_out"] -= hits["alpha_in"]
 
     return hits
 
@@ -59,20 +64,20 @@ def hbond_angle_term( Nx, Ns_COx, Ns_CHx, Cx, Cs_CHx, Cs_NHx ):
     vec_CO_N = Nx - Ns_COx
     vec_CH_N = Nx - Ns_CHx
 
-    vec_N_H = vec_CO_N/np.linalg.norm(vec_CO_N) + vec_CH_N/np.linalg.norm(vec_CH_N)
-    vec_N_H = vec_N_H/np.linalg.norm(vec_N_H)
+    vec_N_H = vec_CO_N/linalg.norm(vec_CO_N) + vec_CH_N/linalg.norm(vec_CH_N)
+    vec_N_H = vec_N_H/linalg.norm(vec_N_H)
 
     vec_CH_C = Cx - Cs_CHx
     vec_NH_C = Cx - Cs_NHx
 
-    vec_C_O = vec_CH_C/np.linalg.norm(vec_CH_C) + vec_NH_C/np.linalg.norm(vec_NH_C)
-    vec_C_O = vec_C_O/np.linalg.norm(vec_C_O)
+    vec_C_O = vec_CH_C/linalg.norm(vec_CH_C) + vec_NH_C/linalg.norm(vec_NH_C)
+    vec_C_O = vec_C_O/linalg.norm(vec_C_O)
 
     vec_N_C = Cx - Nx
-    vec_N_C = vec_N_C/np.linalg.norm(vec_N_C)
+    vec_N_C = vec_N_C/linalg.norm(vec_N_C)
 
-    costhetaN = np.dot( vec_N_H, vec_N_C )
-    costhetaC = np.dot( vec_C_O, -vec_N_C )
+    costhetaN = dot( vec_N_H, vec_N_C )
+    costhetaC = dot( vec_C_O, -vec_N_C )
 
     if costhetaC > 0.0 and costhetaN > 0.0:
         return costhetaC*costhetaC*costhetaN*costhetaN
@@ -107,7 +112,7 @@ def find_PLUM_hbonds( model, threshold=0.5 ):
         for C in Cs:
 
             #Within cutoff?
-            if np.linalg.norm( N.get_coord() - C.get_coord() ) > hb_dist_cut:
+            if linalg.norm( N.get_coord() - C.get_coord() ) > hb_dist_cut:
                 continue
 
             #Not on adjacent or the same residues?
@@ -140,7 +145,7 @@ def find_PLUM_hbonds( model, threshold=0.5 ):
 
         angle_term = hbond_angle_term( N.get_coord(), Ns_CO.get_coord(), Ns_CH.get_coord(),
                           C.get_coord(), Cs_CH.get_coord(), Cs_NH.get_coord()  )
-        dist = np.linalg.norm( N.get_coord() - C.get_coord() )
+        dist = linalg.norm( N.get_coord() - C.get_coord() )
         dist_term = 5*(sigma/dist)**12 - 6*(sigma/dist)**10
 
         pre_energy = -dist_term*angle_term
@@ -153,22 +158,36 @@ def find_PLUM_hbonds( model, threshold=0.5 ):
 if __name__ == '__main__':
 
     #PLUM hbonds
-    #for i_model, model in enumerate(bp.PDBParser().get_structure("",PDB_file)):
+    alpha_hbonds = 0
+    models = 0
+    for i_model, model in enumerate(bp.PDBParser().get_structure("",PDB_file)):
 
         #print "-------------------"
         #print "Model", i_model
         #print "-------------------"
-        #hbond_pairs =  find_PLUM_hbonds( model, threshold = 0.5 )
-        #for N_res, C_res, val in hbond_pairs:
+        hbond_pairs =  find_PLUM_hbonds( model, threshold = 0.7 )
+        models += 1
+        for N_res, C_res, val in hbond_pairs:
             #print "{0:2d} {1:2d}: {2:.2f}%".format(N_res, C_res, 100*val)
+            if N_res - C_res == 4:
+                alpha_hbonds += 1
 
-    #phi_psi area hits
-    for i_model, model in enumerate(bp.PDBParser().get_structure("",PDB_file)):
+    print float(alpha_hbonds)/models, "a-hbs per frame"
 
-        for chain in model:
+    ##phi_psi area hits
+    #sum_area_hits = defaultdict(lambda: 0)
+    #total_phipsi_pairs = 0
+    #for model in bp.PDBParser().get_structure("",PDB_file):
 
-            phi_psi = bp.Polypeptide.Polypeptide(chain).get_phi_psi_list()
+        #for chain in model:
 
-            total_area_hits = get_phi_psi_hits( phi_psi )
-            print  total_area_hits
-    exit()
+            #phi_psi = bp.Polypeptide.Polypeptide(chain).get_phi_psi_list()
+            #total_phipsi_pairs += len(phi_psi)-2
+
+            #area_hits = get_phi_psi_hits( phi_psi )
+
+            #for area in area_hits:
+                #sum_area_hits[area] += area_hits[area]
+
+    #sum_area_hits['other'] = total_phipsi_pairs-sum(sum_area_hits.values())
+    #print sum_area_hits

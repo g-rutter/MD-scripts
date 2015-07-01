@@ -21,21 +21,21 @@ import argparse
 parser = argparse.ArgumentParser(description='Make Ramachandran out of pdb trajectory')
 parser.add_argument('-b', '--bins', type=int, nargs='?', default=200,
                     help='Number of bins for Ramachandran in each dimension.')
-parser.add_argument('--nocolour', '-n', action='store_true', default=False)
 parser.add_argument('--skip', '-s', type=int, default=1)
-parser.add_argument('--notnormed', action='store_true', default=False)
-parser.add_argument('PDB_file',  type=str, nargs='+')
+parser.add_argument('PDB_file',  type=str, nargs=2)
 
 args = parser.parse_args()
 print args
 
 bins=args.bins
 skip=args.skip
-nocolour=args.nocolour
-notnormed=args.notnormed
 pdb_files=args.PDB_file
 
-out_file = 'Ramachandran_' + pdb_files[0] + '.png'
+out_file = 'Rama_diff_' + pdb_files[0] + 'vs' + pdb_files[1] + '.png'
+
+print "Processing difference Ramachandran plot of", pdb_files[0], "minus", pdb_files[1]
+print "Bins:", bins
+print "Skip:", skip
 
 ########################
 #  Rads->Degrees func  #
@@ -60,12 +60,12 @@ def degrees(rad_angle) :
 #  Extract phi,psi from pdbs, make 2D hist  #
 #############################################
 
-phis_all = []
-psis_all = []
+phis_all = [ [], [] ]
+psis_all = [ [], [] ]
 
 i=0
 
-for pdb_file in pdb_files:
+for i_pdb, pdb_file in enumerate(pdb_files):
     for model in bp.PDBParser().get_structure("", pdb_file):
 
         if i%skip == 0:
@@ -74,16 +74,21 @@ for pdb_file in pdb_files:
 
                 for phi_psi in poly.get_phi_psi_list():
                     if phi_psi[0] != None and phi_psi[1] != None:
-                        phis_all.append( degrees(phi_psi[0]))
-                        psis_all.append( degrees(-phi_psi[1]))
+                        phis_all[i_pdb].append( degrees(phi_psi[0]))
+                        psis_all[i_pdb].append( degrees(-phi_psi[1]))
         i+=1
 
 
-heatmap, xedges, yedges = np.histogram2d(psis_all, phis_all, bins=bins, normed=False, range=[[-180,180]]*2)
+heatmap1, xedges, yedges = np.histogram2d(psis_all[0], phis_all[0], bins=bins, normed=False, range=[[-180,180]]*2)
+heatmap2, xedges, yedges = np.histogram2d(psis_all[1], phis_all[1], bins=bins, normed=False, range=[[-180,180]]*2)
 #print heatmap
 
-if notnormed == False:
-    heatmap = heatmap/(heatmap.max())
+heatmap1 = heatmap1/(heatmap1.sum())
+heatmap2 = heatmap2/(heatmap2.sum())
+
+diff_map = heatmap1 - heatmap2
+
+maximum = max( diff_map.max(), -diff_map.min() )
 
 #################
 #  Plot in plt  #
@@ -97,24 +102,21 @@ ax.set_xlabel(r'$\phi$', fontsize=20)
 ax.xaxis.set_ticks( [-180, -120, -60, 0, 60, 120, 180] )
 ax.yaxis.set_ticks( [-180, -120, -60, 0, 60, 120, 180] )
 
-if nocolour:
-    cmap=matplotlib.colors.ListedColormap(['white','black'])
-    bounds=[0,np.finfo(type(heatmap.max())).tiny,1]
-    norm = matplotlib.colors.BoundaryNorm(bounds, cmap.N)
-    imageplot = ax.imshow(heatmap, extent=[-180.0,180.0]*2, cmap=cmap, norm=norm)
+cmap=None
+cmap=plt.get_cmap('seismic')
+#cmap.set_under('w')
+norm=None
+imageplot = ax.imshow(diff_map, extent=[-180.0,180.0]*2, cmap=cmap, norm=norm)
+cbar = fig.colorbar(imageplot)
 
-else:
-    cmap=None
-    cmap=plt.get_cmap('jet')
-    #cmap.set_under('w')
-    norm=None
-    imageplot = ax.imshow(heatmap, extent=[-180.0,180.0]*2, cmap=cmap, norm=norm)
-    fig.colorbar(imageplot)
+cbar.formatter.set_powerlimits((0, 0))
+cbar.update_ticks()
 
 imageplot.set_interpolation('nearest')
+imageplot.set_clim(-maximum, maximum)
 
 #Set lower and upper bounds of the legend
 clims = imageplot.get_clim()
 print clims
-#imageplot.set_clim(clims[1]*0.01, clims[1])
+
 plt.savefig(out_file)
