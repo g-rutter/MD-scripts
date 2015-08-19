@@ -102,4 +102,5 @@ imageplot.set_clim(-maximum, maximum)
 clims = imageplot.get_clim()
 print clims
 
+plt.gcf().subplots_adjust(bottom=0.15)
 plt.savefig(out_file)
