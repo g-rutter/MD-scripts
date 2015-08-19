@@ -10,6 +10,7 @@ import math
 import matplotlib
 #Not interactive, can use over SSH
 matplotlib.use('Agg')
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import sys
@@ -30,7 +31,7 @@ print args
 
 unpickle_files=args.unpickle_file
 
-out_file = 'Rama_diff_' + unpickle_files[0] + 'vs' + unpickle_files[1] + '.png'
+out_file = 'Rama_diff_' + unpickle_files[0] + 'vs' + unpickle_files[1] + '.eps'
 
 print "Processing difference Ramachandran plot of", unpickle_files[0], "minus", unpickle_files[1]
 
@@ -59,37 +60,40 @@ def degrees(rad_angle) :
 
 with open(unpickle_files[0]) as unpickle_file:
     heatmap1 = pickle.load(unpickle_file)
-    heatmap1 = heatmap1/(heatmap1.max())
+    heatmap1 = heatmap1/(heatmap1.sum())
 with open(unpickle_files[1]) as unpickle_file:
     heatmap2 = pickle.load(unpickle_file)
-    heatmap2 = heatmap2/(heatmap2.max())
+    heatmap2 = heatmap2/(heatmap2.sum())
 
 diff_map = heatmap1 - heatmap2
 maximum = max( diff_map.max(), -diff_map.min() )
-
-print diff_map
 
 #################
 #  Plot in plt  #
 #################
 
+matplotlib.rcParams.update({'font.size': args.textsize})
+
 fig = plt.figure()
 ax = fig.add_subplot(1,1,1)
-ax.set_ylabel(r'$\psi$', fontsize=20)
-ax.set_xlabel(r'$\phi$', fontsize=20)
+ax.set_ylabel(r'$\psi$', fontsize=(args.textsize)+5)
+ax.set_xlabel(r'$\phi$', fontsize=(args.textsize)+5)
 
-ax.xaxis.set_ticks( [-180, -120, -60, 0, 60, 120, 180] )
-ax.yaxis.set_ticks( [-180, -120, -60, 0, 60, 120, 180] )
+ax.tick_params(axis='x', labelsize=args.textsize, pad=10)
+ax.tick_params(axis='y', labelsize=args.textsize, pad=10)
+
+ax.xaxis.set_ticks( [-180, -90, 0, 90, 180] )
+ax.yaxis.set_ticks( [-180, -90, 0, 90, 180] )
 
 cmap=None
 cmap=plt.get_cmap('seismic')
 #cmap.set_under('w')
 norm=None
 imageplot = ax.imshow(diff_map, extent=[-180.0,180.0]*2, cmap=cmap, norm=norm)
-cbar = fig.colorbar(imageplot)
 
+cbar = fig.colorbar(imageplot)
 cbar.formatter.set_powerlimits((0, 0))
-cbar.update_ticks()
+cbar.ax.tick_params(labelsize=args.textsize)
 
 imageplot.set_interpolation('nearest')
 imageplot.set_clim(-maximum, maximum)
