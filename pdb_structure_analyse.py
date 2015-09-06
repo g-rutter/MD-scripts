@@ -84,7 +84,7 @@ def hbond_angle_term( Nx, Ns_COx, Ns_CHx, Cx, Cs_CHx, Cs_NHx ):
 
     return 0.0
 
-def find_PLUM_hbonds( model, threshold=0.5 ):
+def find_PLUM_hbonds( model, same_chain_allowed=True, threshold=0.5 ):
 
     #settings
     hb_dist_cut=8.0
@@ -117,10 +117,11 @@ def find_PLUM_hbonds( model, threshold=0.5 ):
 
             #Not on adjacent or the same residues?
             dist = abs( N.parent.get_id()[1] - C.parent.get_id()[1] )
-            same_chain = ( N.parent.parent.get_id() == C.parent.parent.get_id() )
+            on_same_chain = ( N.parent.parent.get_id() == C.parent.parent.get_id() )
 
-            if same_chain and dist < 2:
-                continue
+            if on_same_chain == True:
+                if same_chain_allowed == False or dist < 2:
+                    continue
 
             pairs_within_cutoff.append( [N,C] )
 
@@ -162,13 +163,13 @@ if __name__ == '__main__':
     models = 0
     for i_model, model in enumerate(bp.PDBParser().get_structure("",PDB_file)):
 
-        #print "-------------------"
-        #print "Model", i_model
-        #print "-------------------"
-        hbond_pairs =  find_PLUM_hbonds( model, threshold = 0.7 )
+        print "-------------------"
+        print "Model", i_model
+        print "-------------------"
+        hbond_pairs =  find_PLUM_hbonds( model, same_chain_allowed=True, threshold = 0.2 )
         models += 1
         for N_res, C_res, val in hbond_pairs:
-            #print "{0:2d} {1:2d}: {2:.2f}%".format(N_res, C_res, 100*val)
+            print "{0:2d} {1:2d}: {2:.2f}%".format(N_res, C_res, 100*val)
             if N_res - C_res == 4:
                 alpha_hbonds += 1
 
