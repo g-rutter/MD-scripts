@@ -6,8 +6,6 @@ import sys
 from numpy import pi, array, linalg, dot
 from collections import defaultdict
 
-PDB_file = sys.argv[1]
-
 def count_in_area(area, coordinates):
     """
     area is an area specified as ( ( x_low, x_high ), ( y_low, y_high ) )
@@ -155,25 +153,58 @@ def find_PLUM_hbonds( model, threshold=0.5 ):
 
     return hbond_pairs
 
+def get_SC_capts( model, threshold, res_separation ):
+
+    SC_atoms = []
+    captured = []
+
+    for atom in model.get_atoms():
+        if ['N', 'CA', 'C'].count(atom.name) == 0:
+            SC_atoms.append(atom)
+
+    for i1, atom1 in enumerate(SC_atoms):
+        for atom2 in SC_atoms[i1+1:]:
+
+            same_chain = ( atom1.parent.parent.get_id() == atom2.parent.parent.get_id() )
+            dist = abs( atom1.parent.get_id()[1] - atom2.parent.get_id()[1] )
+
+            if same_chain and dist < res_separation:
+                continue
+
+            dist = linalg.norm( atom1.get_coord() - atom2.get_coord() )
+
+            if dist < threshold:
+                captured.append( (atom1, atom2) )
+
+    return captured
+
+def diff_chains(resID1, resID2, res_per_chain):
+    chain1 = (resID1-1)/res_per_chain
+    chain2 = (resID2-1)/res_per_chain
+
+    if chain1 == chain2:
+        return False
+    else:
+        return True
+
 if __name__ == '__main__':
 
-    #PLUM hbonds
-    alpha_hbonds = 0
-    models = 0
-    for i_model, model in enumerate(bp.PDBParser().get_structure("",PDB_file)):
+    PDB_files = sys.argv[1:]
+    res_per_chain = 30
+    capture_cutoff = 10.0
+    outfile_name = "interpeptide_interactions"
+    min_res_separation = 1
 
-        #print "-------------------"
-        #print "Model", i_model
-        #print "-------------------"
-        hbond_pairs =  find_PLUM_hbonds( model, threshold = 0.7 )
-        models += 1
-        for N_res, C_res, val in hbond_pairs:
-            #print "{0:2d} {1:2d}: {2:.2f}%".format(N_res, C_res, 100*val)
-            if N_res - C_res == 4:
-                alpha_hbonds += 1
+    if len(PDB_files) == 0:
+        print "Run as", sys.argv[0], "[pdb_files]"
+        exit()
 
-    print float(alpha_hbonds)/models, "a-hbs per frame"
+    #for PDB_file in PDB_files:
+        #for i_model, model in enumerate(bp.PDBParser().get_structure("",PDB_file)):
 
+            ##print "-------------------"
+            ##print "Model", i_model
+            ##print "-------------------"
     ##phi_psi area hits
     #sum_area_hits = defaultdict(lambda: 0)
     #total_phipsi_pairs = 0
@@ -191,3 +222,87 @@ if __name__ == '__main__':
 
     #sum_area_hits['other'] = total_phipsi_pairs-sum(sum_area_hits.values())
     #print sum_area_hits
+
+    #SC captures
+    sum_SCcapts = defaultdict(int)
+    interpeptide_SCcapts = defaultdict(int)
+    all_SCcapts = defaultdict(int)
+    interpeptide_hbond_count = defaultdict(lambda:0)
+    alpha_hbonds = 0
+    models = 0
+
+    for PDB_file in PDB_files:
+        print "Working on file", PDB_file, "..."
+        for i_model, model in enumerate(bp.PDBParser().get_structure("",PDB_file)):
+
+            #print "Model:", i_model
+
+            #################
+            #  HB analysis  #
+            #################
+
+            hbond_pairs =  find_PLUM_hbonds( model, threshold = 0.1 )
+            models += 1
+            HB_added = defaultdict(lambda:False)
+
+            #interpeptide output
+            for N_res, C_res, val in hbond_pairs:
+                #print N_res, C_res
+                if N_res - C_res == 4:
+                    alpha_hbonds += 1
+
+                if diff_chains(N_res, C_res, res_per_chain):
+
+                    if HB_added[N_res] == False:
+                        interpeptide_hbond_count[N_res] += 1
+                    if HB_added[C_res] == False:
+                        interpeptide_hbond_count[C_res] += 1
+                    HB_added[N_res] = True
+                    HB_added[C_res] = True
+
+            #################
+            #  SC analysis  #
+            #################
+
+            SC_capts = get_SC_capts( model, capture_cutoff, min_res_separation )
+            SC_added = defaultdict(lambda:False)
+
+            for capt in SC_capts:
+                ID1 = capt[0].parent.get_id()[1]
+                ID2 = capt[1].parent.get_id()[1]
+
+                code1 = str(ID1)+capt[0].parent.get_resname().strip()
+                code2 = str(ID2)+capt[1].parent.get_resname().strip()
+                #Order is always same because of iteration process.
+                sum_SCcapts[ (code1, code2) ] += 1
+
+                if diff_chains(ID1, ID2, res_per_chain):
+                    if SC_added[ID1] == False:
+                        interpeptide_SCcapts[ID1] += 1
+                    if SC_added[ID2] == False:
+                        interpeptide_SCcapts[ID2] += 1
+                    SC_added[ID1] = True
+                    SC_added[ID2] = True
+
+            sum_SCcapts[ 'total' ] += 1
+
+    with open(outfile_name, 'w') as outfile:
+        print >>outfile, "Settings:"
+        print >>outfile, "min_res_separation", min_res_separation
+        print >>outfile, "capture_cutoff", capture_cutoff
+        print >>outfile, ""
+
+        print >>outfile, "All SC capts:"
+        for res, count in sum_SCcapts.iteritems():
+            print >>outfile, "{0} {1:5.2f}".format( res, float(count)/sum_SCcapts['total'] )
+
+        print >>outfile, ""
+        print >>outfile, "Interpeptide SC capts:"
+        for res, count in interpeptide_SCcapts.iteritems():
+            print >>outfile, "{0:2d} {1:5.2f}".format( res, float(count)/sum_SCcapts['total'] )
+
+        print >>outfile, ""
+        print >>outfile, "Interpeptide HB capts:"
+        for res, count in interpeptide_hbond_count.iteritems():
+            print >>outfile, "{0:2d} {1:5.2f}".format( res, float(count)/models )
+
