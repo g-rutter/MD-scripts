@@ -3,8 +3,10 @@
 
 import Bio.PDB as bp
 import sys
-from numpy import pi, array, linalg, dot
+from numpy import pi, array, linalg, dot, zeros, set_printoptions
 from collections import defaultdict
+
+set_printoptions(linewidth=200)
 
 def count_in_area(area, coordinates):
     """
@@ -179,54 +181,45 @@ def get_SC_capts( model, threshold, res_separation ):
 
     return captured
 
-def diff_chains(resID1, resID2, res_per_chain):
-    chain1 = (resID1-1)/res_per_chain
-    chain2 = (resID2-1)/res_per_chain
+def resID_to_local_resID(resID, res_per_chain):
+    local_resID = resID
 
-    if chain1 == chain2:
-        return False
-    else:
-        return True
+    while local_resID > 0:
+        local_resID -= res_per_chain
+
+    return local_resID+res_per_chain
+
+def hbond_hits_2D(PDB_files,res_per_chain,same_chain_allowed):
+
+    # PLUM hbonds
+    models = 0
+    pair_hits_ar = zeros([30,30],dtype=int)
+
+    for PDB_file in PDB_files:
+        print PDB_file
+        for i_model, model in enumerate(bp.PDBParser().get_structure("",PDB_file)):
+
+            models += 1
+            hbond_pairs =  find_PLUM_hbonds( model, same_chain_allowed=same_chain_allowed, threshold = 0.2 )
+            pair_hits_this = defaultdict(int, {})
+
+            for N_res, C_res, val in hbond_pairs:
+
+                global_pair = frozenset([N_res, C_res])
+                if pair_hits_this[global_pair] == 0:
+                    pair_hits_this[global_pair] = 1
+
+                    local_resID1 = resID_to_local_resID(N_res, res_per_chain)
+                    local_resID2 = resID_to_local_resID(C_res, res_per_chain)
+                    pair_hits_ar[local_resID1-1,local_resID2-1] += 1
+                    pair_hits_ar[local_resID2-1,local_resID1-1] += 1
+
+    print pair_hits_ar
+    print ""
+    print pair_hits_ar.astype(float)/(models*8)
 
 if __name__ == '__main__':
 
-    PDB_file=sys.argv[1]
+    PDB_files=sys.argv[1:]
+    hbond_hits_2D(PDB_files,30,False)
 
-    # PLUM hbonds
-    alpha_hbonds = 0
-    models = 0
-    for i_model, model in enumerate(bp.PDBParser().get_structure("",PDB_file)):
-
-        print "-------------------"
-        print "Model", i_model
-        print "-------------------"
-
-        hbond_pairs =  find_PLUM_hbonds( model, same_chain_allowed=True, threshold = 0.2 )
-        models += 1
-
-        for N_res, C_res, val in hbond_pairs:
-
-            print "{0:2d} {1:2d}: {2:.2f}%".format(N_res, C_res, 100*val)
-
-            if N_res - C_res == 4:
-                alpha_hbonds += 1
-
-    print float(alpha_hbonds)/models, "a-hbs per frame"
-
-    # phi_psi area hits
-    sum_area_hits = defaultdict(lambda: 0)
-    total_phipsi_pairs = 0
-    for model in bp.PDBParser().get_structure("",PDB_file):
-
-        for chain in model:
-
-            phi_psi = bp.Polypeptide.Polypeptide(chain).get_phi_psi_list()
-            total_phipsi_pairs += len(phi_psi)-2
-
-            area_hits = get_phi_psi_hits( phi_psi )
-
-            for area in area_hits:
-                sum_area_hits[area] += area_hits[area]
-
-    sum_area_hits['other'] = total_phipsi_pairs-sum(sum_area_hits.values())
-    print sum_area_hits
