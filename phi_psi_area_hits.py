@@ -34,10 +34,18 @@ area_definitons = (
     #alpha_helix
     ( ( -1.92,  -0.66  ),   #phi
       ( -1.40,  -0.26  ) ), #psi
+
+    #weird_turn
+    ( ( -2.34,  -1.80  ),   #phi
+      ( -0.75,  -0.16  ) ), #psi
+
+    #beta_antip
+    ( ( -2.37,  -1.77  ),   #phi
+      (  1.82,   2.84  ) )  #psi
     )
 
 area_names = ( 'bottomleft', 'topleft', 'bottomright', 'topright',
-               'alpha_helix' )
+               'alpha_helix', 'weird_turn', 'beta_antip' )
 
 region_names = {
     #Full n16n and Tiffs n16N regions

@@ -11,6 +11,8 @@ import pickle
 #Not interactive, can use over SSH
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from matplotlib import rcParams
+rcParams.update({'figure.autolayout': True})
 import numpy as np
 import sys
 import argparse
@@ -27,6 +29,8 @@ parser.add_argument('--skip', '-s', type=int, default=1)
 parser.add_argument('--notnormed', action='store_true', default=False)
 parser.add_argument('PDB_file',  type=str, nargs='*')
 
+parser.add_argument('--textsize', '-t', type=int, nargs='?', default=23,
+                    help='Using 23 as standard in journals.')
 parser.add_argument('-p', '--pickle', type=str, nargs=1,
                     help='Pickle the heatmap so it won\'t have to be calculated again. Provide the pickle filename.')
 
@@ -53,9 +57,9 @@ if args.unpickle != None and args.pickle != None:
     exit()
 
 if len(pdb_files) > 0:
-    out_file = 'Ramachandran_' + pdb_files[0] + '.png'
+    out_file = 'Ramachandran_' + pdb_files[0] + '.eps'
 else:
-    out_file = 'Ramachandran_' + args.unpickle[0] + '.png'
+    out_file = 'Ramachandran_' + args.unpickle[0] + '.eps'
 
 ########################
 #  Rads->Degrees func  #
@@ -120,14 +124,14 @@ if notnormed == False:
 
 fig = plt.figure()
 ax = fig.add_subplot(1,1,1)
-ax.set_ylabel(r'$\psi$', fontsize=30)
-ax.set_xlabel(r'$\phi$', fontsize=30)
+ax.set_ylabel(r'$\psi$', fontsize=(args.textsize)+5)
+ax.set_xlabel(r'$\phi$', fontsize=(args.textsize)+5)
 
-ax.tick_params(axis='x', labelsize=20)
-ax.tick_params(axis='y', labelsize=20)
+ax.tick_params(axis='x', labelsize=args.textsize, pad=10)
+ax.tick_params(axis='y', labelsize=args.textsize, pad=10)
 
-ax.xaxis.set_ticks( [-180, -120, -60, 0, 60, 120, 180] )
-ax.yaxis.set_ticks( [-180, -120, -60, 0, 60, 120, 180] )
+ax.xaxis.set_ticks( [-180, -90, 0, 90, 180] )
+ax.yaxis.set_ticks( [-180, -90, 0, 90, 180] )
 
 if nocolour:
     cmap=matplotlib.colors.ListedColormap(['white','black'])
@@ -141,7 +145,8 @@ else:
     #cmap.set_under('w')
     norm=None
     imageplot = ax.imshow(heatmap, extent=[-180.0,180.0]*2, cmap=cmap, norm=norm)
-    fig.colorbar(imageplot)
+    cbar = fig.colorbar(imageplot)
+    cbar.ax.tick_params(labelsize=args.textsize)
 
 imageplot.set_interpolation('nearest')
 

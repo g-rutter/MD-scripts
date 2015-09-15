@@ -110,8 +110,8 @@ except (ValueError, IndexError) as e:
     raise
 
 date               = time.strftime('%X %x %Z')
-inner_box_size     = 70.0
-box_pad            = 70.0
+inner_box_size     = 152.0
+box_pad            = 25.0
 box_size           = 2*box_pad + inner_box_size
 n_residues         = len(sequence)
 n_bb_sites         = 3*n_residues

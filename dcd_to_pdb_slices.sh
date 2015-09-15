@@ -9,6 +9,7 @@ DCD=$1
 PSF=$2
 stride=$3
 percent_slice_size=$4
+threads=2
 
 start_percents=(`seq 0 $percent_slice_size 99`)
 

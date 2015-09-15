@@ -21,7 +21,7 @@ import re
 # Size units are Angstroms = 0.1 nanometers
 
 #This is the padding around the smallest box containing all atoms in the initial configuration.
-box_pad  = 15.0
+box_pad  = 45.0
 
 #Displacement in x, y and z between the first N site of each residue and the next.
 peptide_pad = 15.0
