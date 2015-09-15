@@ -12,8 +12,8 @@ from progressbar import ProgressBar
 
 data_source = sys.argv[1]
 heatmap = np.loadtxt(data_source)
-# heatmap = heatmap/11277 <- n16N-8
-# heatmap = heatmap/10956 <- n16NN-8
+heatmap = heatmap/(10150*8) #<- n16N-8
+# heatmap = heatmap/(9861*8) #<- n16NN-8
 
 fig = plt.figure()
 ax = fig.add_subplot(1,1,1)
