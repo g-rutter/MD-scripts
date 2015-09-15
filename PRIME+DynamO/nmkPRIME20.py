@@ -110,8 +110,8 @@ except (ValueError, IndexError) as e:
     raise
 
 date               = time.strftime('%X %x %Z')
-inner_box_size     = 50.0
-box_pad            = 100.0
+inner_box_size     = 152.0
+box_pad            = 25.0
 box_size           = 2*box_pad + inner_box_size
 n_residues         = len(sequence)
 n_bb_sites         = 3*n_residues
@@ -138,6 +138,12 @@ print 'N chains:', n_chains, '\n'
 #######################################################################
 
 source_res_count = len(src_config)/4
+
+#Check desired seq is not longer than src_config
+if source_res_count < len(sequence):
+    print "Max chain length is {0}.".format(source_res_count)
+    print "This chain's length is", len(sequence), "unfortunately!"
+    exit()
 
 final_coords = np.empty( [n_chains*n_sites, 3] )
 coords = np.empty( [n_sites, 3] )

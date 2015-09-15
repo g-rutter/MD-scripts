@@ -161,7 +161,7 @@ for in_fn in in_fns:
     catdcd_output=Popen( [ "catdcd", "-num", in_fn], stdout=PIPE ).communicate()[0]
     frames = int(catdcd_output.split('\n')[-3].split(' ')[-1])
     min_frames = min(frames, min_frames)
-    print frames, min_frames
+    #print frames, min_frames
 
 if len(dcd_sample_steps) != min_frames:
     print "WARNING: Some DCD input files are truncated."

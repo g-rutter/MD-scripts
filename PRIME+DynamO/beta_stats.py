@@ -16,7 +16,7 @@ from collections import defaultdict
 
 parallel_max_rad = 1.0472
 antipara_min_rad = parallel_max_rad*2
-min_bonding_HBs = 3
+min_bonding_HBs = 4
 
 ########################
 #  Get and sort files  #

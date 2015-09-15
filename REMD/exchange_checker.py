@@ -55,6 +55,8 @@ parser.add_argument('--outxmg', nargs='?', default='REMD_hist.agr', dest='out_xm
         help='Filename for outputted stats text file.')
 parser.add_argument('--nevery', '-n', nargs='?', default=1, dest='n_every', type=int,
         help='Read every nth line')
+parser.add_argument('--mevery', '-m', nargs='?', default=1, dest='m_every', type=int,
+        help='Check every mth replica only')
 
 args = parser.parse_args()
 out_stats = open(args.out_stats_str, "w")
@@ -79,8 +81,6 @@ n_header_lines = 0
 with open(args.logfile_str, 'r') as logfile:
     for i_line, line in enumerate(logfile):
 
-        line_list = line.split(' ')
-
         if not line[0].isdigit():
             n_header_lines += 1
 
@@ -90,6 +90,7 @@ with open(args.logfile_str, 'r') as logfile:
 
 n_swaps = file_n_lines(args.logfile_str)-n_header_lines
 
+n_replicas_used = n_replicas/args.m_every
 n_swaps_used = int(round(float(n_swaps)/args.n_every))
 
 
@@ -99,6 +100,7 @@ swap_steps = np.empty([n_swaps_used],            dtype = int)
 print ""
 print "Stats on log file:"
 print "n_replicas: ", n_replicas
+print "n_replicas_used: ", n_replicas_used
 print "n_swaps: ", n_swaps
 print "n_header_lines: ", n_header_lines
 print "n_swaps_used = n_swaps/n_every =", n_swaps_used
