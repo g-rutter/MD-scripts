@@ -3,7 +3,7 @@
 #PBS -j oe
 #PBS -V
 
-module load ompi_threads/1.6.4/intel/13.1
+module load ompi/1.6.4/intel/13.1
 
 if [ $# -lt 6 ]; then
     echo "Usage: $0 [PDB file] [dir] [IDX_file] [clust_group] [clust_cut] [identical]"
@@ -27,7 +27,7 @@ mkdir -p $dir
 #  Clustering  #
 ################
 
-time g_cluster -s ${PDB_file} -f ${PDB_file} -method gromos -n ${IDX_file} -cl $dir/clusters.pdb -cutoff ${clust_cut} -clid $dir/clust-id -o $dir/rmsd-clust.xpm -g $dir/clust.log -dist $dir/rmsd-dist -nidentical $identical >/dev/null <<< $clust_group'
+mpirun g_cluster_mpi -s ${PDB_file} -f ${PDB_file} -method gromos -n ${IDX_file} -cl $dir/clusters.pdb -cutoff ${clust_cut} -clid $dir/clust-id -o $dir/rmsd-clust.xpm -g $dir/clust.log -dist $dir/rmsd-dist -nidentical $identical >/dev/null <<< $clust_group'
 4
 '
 
