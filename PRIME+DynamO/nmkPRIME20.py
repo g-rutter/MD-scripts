@@ -9,6 +9,7 @@ import numpy as np
 import subprocess
 import re
 from config import config as src_config
+from optparse import OptionParser
 
 ##############
 #  Settings  #
@@ -55,59 +56,55 @@ nongly_sites     = list(nongly_SC) + ['NH', 'CH', 'CO']
 sites            = list(nongly_sites) + ['G']
 nonglycine_names = ['Alanine', 'Cysteine', 'Aspartic Acid', 'Glutamic Acid', 'Phenylalanine', 'Histidine', 'Isoleucine', 'Lysine', 'Leucine', 'Methionine', 'Asparagine', 'Proline', 'Glutamine', 'Arginine', 'Serine', 'Threonine', 'Valine', 'Tryptophan', 'Tyrosine' ] + ['Nitrogen+Hydrogen', 'Carbon+Hydrogen', 'Carbon+Oxygen']
 
-try:
-    filename = str(sys.argv[4])
-except:
-    filename = 'Hall_peptide'
+parser = OptionParser()
+parser.add_option("-s", "--sequence", dest="sequence")
+parser.add_option("-f", "--filename", dest="filename", default="Hall_peptide",
+                  help= "Program will write filename.xml and filename.psf")
+parser.add_option("-T", "--temperature", dest="temperature", default=1.0)
+parser.add_option("-N", dest="n_chains", type=int)
+parser.add_option("-o", "--outer", dest="outer", default=1.0, type=float)
+parser.add_option("-i", "--inner", dest="inner", default=1.0, type=float)
+
+
+(options, args) = parser.parse_args()
+
+filename = options.filename
 
 psf_fn = filename + '.psf'
 xml_fn = filename + '.xml'
 
-try:
-    temperature = sys.argv[3]
-except:
-    temperature = '1.0'
+temperature = str(options.temperature)
+n_chains = options.n_chains
 
-try:
-    n_chains = int(sys.argv[2])
-except:
-    n_chains = 1
+options.sequence = options.sequence.upper()
+if ( options.sequence == 'S1' ):
+    sequence = list('PPPWLPYMPPWS')
+elif ( options.sequence == 'N16N' ):
+    sequence = list('AYHKKCGRYSYCWIPYDIERDRYDNGDKKC')
+elif ( options.sequence == 'N16NN' ):
+    sequence = list('AYHKKCGRYSYCWIPYNIQRNRYNNGNKKC')
+elif ( options.sequence[:5] == 'ALPHA' ):
+    sequence = list('ACDEFGHIKLMNPQRSTVWY')
+elif (options.sequence == '2A3D'):
+    sequence = list('MGSWAEFKQRLAAIKTRLQALGGSEAELAAFEKEIAAFESELQAYKGKGNPEVEALRKEAAAIRDELQAYRHN')
+else:
+    sequence = list(options.sequence)
+    valid_input = SC + [ str(number) for number in range(0,10) ]
+    assert ( [ residue in valid_input for residue in list(options.sequence)] )
 
-try:
-    sys.argv[1] = sys.argv[1].upper()
-    if ( sys.argv[1] == 'S1' ):
-        sequence = list('PPPWLPYMPPWS')
-    elif ( sys.argv[1] == 'N16N' ):
-        sequence = list('AYHKKCGRYSYCWIPYDIERDRYDNGDKKC')
-    elif ( sys.argv[1] == 'N16NN' ):
-        sequence = list('AYHKKCGRYSYCWIPYNIQRNRYNNGNKKC')
-    elif ( sys.argv[1][:5] == 'ALPHA' ):
-        sequence = list('ACDEFGHIKLMNPQRSTVWY')
-    elif (sys.argv[1] == '2A3D'):
-        sequence = list('MGSWAEFKQRLAAIKTRLQALGGSEAELAAFEKEIAAFESELQAYKGKGNPEVEALRKEAAAIRDELQAYRHN')
-    else:
-        sequence = list(sys.argv[1])
-        valid_input = SC + [ str(number) for number in range(0,10) ]
-        assert ( [ residue in valid_input for residue in list(sys.argv[1])] )
+    matches = re.finditer("[0-9]+", options.sequence)
 
-        matches = re.finditer("[0-9]+", sys.argv[1])
+    for match in matches:
 
-        for match in matches:
+        letter_index = match.start()-1
+        number = int( match.group() )
 
-            letter_index = match.start()-1
-            number = int( match.group() )
+        letter = options.sequence[letter_index]
+        insertion = letter*number
+        sequence[letter_index] = insertion
 
-            letter = sys.argv[1][letter_index]
-            insertion = letter*number
-            sequence[letter_index] = insertion
-
-        sequence = filter( lambda x: x.isalpha(), sequence)
-        sequence = list(''.join(sequence))
-
-except (ValueError, IndexError) as e:
-    print 'Run as ./peptide_maker.py (sequence) [n_chains = 1] [temperature kT = 1.0] [xml_fn = PRIME_peptide].'
-    print ''
-    raise
+    sequence = filter( lambda x: x.isalpha(), sequence)
+    sequence = list(''.join(sequence))
 
 date               = time.strftime('%X %x %Z')
 inner_box_size     = 60.0
@@ -228,7 +225,7 @@ temp = ET.SubElement( Globals, 'Global', attrib = {'Type':'Cells','Name':'Schedu
 ET.SubElement( temp, 'IDRange', attrib = {'Type':'All'})
 
 #Interactions section
-PRIME = ET.SubElement( Interactions, 'Interaction', attrib = {'Type':'PRIME', 'Name':'Backbone', 'Topology':"PRIMEData", 'HBStrength':str(HB_strength), 'WellRadius':str(1.0), 'SCSCInner':str(1.05*3.173), 'SCSCOuter':str(6.410)} )
+PRIME = ET.SubElement( Interactions, 'Interaction', attrib = {'Type':'PRIME', 'Name':'Backbone', 'Topology':"PRIMEData", 'HBStrength':str(HB_strength), 'WellRadius':str(1.0), 'SCSCInner':str(options.inner), 'SCSCOuter':str(options.outer)} )
 ET.SubElement( PRIME, 'IDPairRange', attrib = {'Type':'All'} )
 
 #Topology section
@@ -298,7 +295,7 @@ input_file.write('<!-- Created on ' +date + '. -->\n')
 input_file.close()
 
 #Add thermostat and rescale via dynamod:
-thermostat_command = [ 'dynamod_SCconst',  '-T', temperature, '-r', temperature, '-o', xml_fn, '-Z', xml_fn ]
+thermostat_command = [ 'dynamod_SCfactors',  '-T', temperature, '-r', temperature, '-o', xml_fn, '-Z', xml_fn ]
 print "Running this command:", " ".join(thermostat_command)
 if debug:
     print subprocess.Popen(thermostat_command, stderr=subprocess.STDOUT, stdout=subprocess.PIPE).communicate()[0]
@@ -306,7 +303,7 @@ else:
     silent_stdout = subprocess.Popen(thermostat_command, stderr=subprocess.STDOUT, stdout=subprocess.PIPE).communicate()
 
 #Check config is valid with dynamod:
-check_command = ['dynamod_SCconst', xml_fn, "--check", '-o', xml_fn]
+check_command = ['dynamod_SCfactors', xml_fn, "--check", '-o', xml_fn]
 print "Running this command:", " ".join(check_command)
 if debug:
     print subprocess.Popen(check_command, stderr=subprocess.STDOUT, stdout=subprocess.PIPE).communicate()[0]

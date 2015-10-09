@@ -193,7 +193,7 @@ def hbond_hits_2D(PDB_files,res_per_chain,same_chain_allowed):
 
     # PLUM hbonds
     models = 0
-    pair_hits_ar = zeros([30,30],dtype=int)
+    pair_hits_ar = zeros([res_per_chain,res_per_chain],dtype=int)
 
     for PDB_file in PDB_files:
         print PDB_file
@@ -201,13 +201,13 @@ def hbond_hits_2D(PDB_files,res_per_chain,same_chain_allowed):
 
             models += 1
             hbond_pairs =  find_PLUM_hbonds( model, same_chain_allowed=same_chain_allowed, threshold = 0.2 )
-            pair_hits_this = defaultdict(int, {})
+            hits_this = defaultdict(int, {})
 
             for N_res, C_res, val in hbond_pairs:
 
                 global_pair = frozenset([N_res, C_res])
-                if pair_hits_this[global_pair] == 0:
-                    pair_hits_this[global_pair] = 1
+                if hits_this[global_pair] == 0:
+                    hits_this[global_pair] = 1
 
                     local_resID1 = resID_to_local_resID(N_res, res_per_chain)
                     local_resID2 = resID_to_local_resID(C_res, res_per_chain)
@@ -218,8 +218,41 @@ def hbond_hits_2D(PDB_files,res_per_chain,same_chain_allowed):
     print ""
     print pair_hits_ar.astype(float)/(models*8)
 
+def hbond_hits_1D(PDB_files,res_per_chain,same_chain_allowed):
+
+    # PLUM hbonds
+    models = 0
+    hits_ar = zeros([res_per_chain],dtype=int)
+
+    for PDB_file in PDB_files:
+        print PDB_file
+        for i_model, model in enumerate(bp.PDBParser().get_structure("",PDB_file)):
+
+            models += 1
+            hbond_pairs =  find_PLUM_hbonds( model, same_chain_allowed=same_chain_allowed, threshold = 0.2 )
+            hits_this = defaultdict(int, {})
+
+            for N_res, C_res, val in hbond_pairs:
+
+                global_res1 = N_res
+                global_res2 = C_res
+                if hits_this[global_res1] == 0:
+                    hits_this[global_res1] = 1
+                    local_resID1 = resID_to_local_resID(N_res, res_per_chain)
+                    hits_ar[local_resID1-1] += 1
+
+                if hits_this[global_res2] == 0:
+                    hits_this[global_res2] = 1
+                    local_resID2 = resID_to_local_resID(C_res, res_per_chain)
+                    hits_ar[local_resID2-1] += 1
+
+
+    print hits_ar
+    print ""
+    print hits_ar.astype(float)/(models*8)
+
 if __name__ == '__main__':
 
     PDB_files=sys.argv[1:]
-    hbond_hits_2D(PDB_files,30,False)
+    hbond_hits_1D(PDB_files,30,False)
 
